@@ -12,11 +12,13 @@ Spesifikasi teknis tiap milestone ada di `ARCHITECTURE.md`; jangan mengubah skem
 
 **Acceptance criteria:**
 
-- [ ] `uv sync` berhasil dari repo bersih.
-- [ ] `pytest -q` dan `ruff check .` lulus.
-- [ ] `config.py` memuat YAML dan memvalidasi kunci wajib; config yang cacat menimbulkan error jelas, bukan `KeyError`.
-- [ ] `ids.py` membuat dan memvalidasi ID sesuai regex di `ARCHITECTURE.md` §5, dengan test untuk ID valid dan tidak valid.
-- [ ] `data/`, `.env`, dan cache tidak akan ter-commit (`git status` bersih setelah pipeline dijalankan).
+- [x] `uv sync` berhasil dari repo bersih.
+- [x] `pytest -q` dan `ruff check .` lulus.
+- [x] `config.py` memuat YAML dan memvalidasi kunci wajib; config yang cacat menimbulkan error jelas, bukan `KeyError`.
+- [x] `ids.py` membuat dan memvalidasi ID sesuai regex di `ARCHITECTURE.md` §5, dengan test untuk ID valid dan tidak valid.
+- [x] `data/`, `.env`, dan cache tidak akan ter-commit (pola diverifikasi dengan `git check-ignore`; pipeline belum tersedia).
+
+**Verifikasi M0 (2026-11-18):** Python 3.11.0 / Windows; `python -m uv sync` berhasil membuat environment baru, `python -m uv sync --locked` berhasil; 93 test lulus pada jalur penuh dan `not gpu`; Ruff lint dan pemeriksaan format bersih. Perintah lengkap ada di README. CUDA, unduhan model, dan API LLM belum diuji.
 
 **Dependensi (sudah disetujui):** runtime — `pyyaml`, `pymupdf`, `httpx`, `lancedb`, `sentence-transformers`, `torch`, `openai`, `streamlit`; dev — `pytest`, `ruff`.
 

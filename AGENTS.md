@@ -18,15 +18,19 @@ Jika kode dan dokumen bertentangan, jangan menebak. Tanyakan, atau tandai ketida
 
 ## 2. Perintah
 
-TODO: verifikasi tiap perintah benar-benar jalan, lalu hapus tanda ini.
+Perintah fondasi sudah diverifikasi pada M0. Jalankan dari root repo; bentuk module tidak memerlukan `uv` di PATH atau aktivasi virtual environment. Jika belum terpasang: `python -m pip install --user uv`.
 
 ```bash
-uv sync                                   # install dependensi
-pytest -q                                 # semua test (tanpa API berbayar)
-pytest -q -m "not gpu"                    # test tanpa GPU
-ruff check . && ruff format --check .     # lint dan format
-python -m eval.run --config config.yaml   # evaluasi retrieval dan sitasi
+python -m uv sync --locked                        # install dependensi dari lockfile
+python -m uv run python -m pytest -q               # semua test (tanpa API berbayar)
+python -m uv run python -m pytest -q -m "not gpu"  # test tanpa GPU
+python -m uv run ruff check .                      # lint
+python -m uv run ruff format --check .             # format
 ```
+
+Di mesin pengembangan Windows, launcher `pytest.exe` diblokir Application Control; pemanggilan melalui `python -m pytest` sudah diverifikasi.
+
+TODO M6: implementasikan dan verifikasi perintah evaluasi retrieval/sitasi. Runner evaluasi belum tersedia; lokasi config adalah `configs/config.yaml`.
 
 Jalankan test dan lint setelah setiap perubahan kode, sebelum menyatakan tugas selesai.
 

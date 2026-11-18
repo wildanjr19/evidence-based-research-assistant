@@ -6,7 +6,7 @@ chunking:
 embedding:
   model: BAAI/bge-base-en-v1.5
   batch_size: 32
-  device: cuda
+  device: cpu
 
 retrieval:
   dense_top_k: 50
