@@ -67,10 +67,16 @@ Default `lexical-v1` tidak mengklaim jumlah token model. `merge` hanya menggabun
 
 **Acceptance criteria:**
 
-- [ ] Seluruh chunk terindeks; jumlah di vector store = jumlah di tabel `chunk`.
-- [ ] Cache embedding mencegah perhitungan ulang saat run diulang.
-- [ ] Waktu indexing dan jumlah token/embedding dicatat.
-- [ ] Test yang butuh GPU diberi marker `gpu`; jalur default tetap lulus tanpa GPU.
+- [x] Seluruh chunk terindeks; jumlah di vector store = jumlah di tabel `chunk`.
+- [x] Cache embedding mencegah perhitungan ulang saat run diulang.
+- [x] Waktu indexing dan jumlah token/embedding dicatat.
+- [x] Test yang butuh GPU diberi marker `gpu`; jalur default tetap lulus tanpa GPU.
+
+**Verifikasi awal M3 (2026-11-18):** 185 test lulus, satu test GPU dilewati karena PyTorch CPU; Ruff lint/format bersih. Test memakai embedder mock dan LanceDB/FTS5 nyata, mencakup cache, deduplikasi/batch, special tokens, penolakan truncation, cache rusak, kelanjutan indeks parsial, konflik metadata/model, dan laporan run unik. Uji BGE nyata pada CPU menghasilkan 21 baris SQLite = 21 vektor = 21 FTS5 pada database baru `data/m3-smoke/`. Run pertama: 21 embedding, 8.758 token model, 20,38 detik termasuk pemuatan model/unduhan. Pengulangan offline: 21 cache hit, nol embedding/token baru, 6,00 detik. Target eksperimen diturunkan menjadi 380 token leksikal; maksimum input 491 token model. Data M2 dipertahankan, termasuk chunk lama 514 token yang melebihi batas BGE 512. Korpus penuh dan kualitas retrieval belum dievaluasi.
+
+**Penutupan M3 (2026-11-18):** seluruh acceptance criteria terpenuhi. Pengguna memasang PyTorch `2.15.0+cu132`; CUDA aktif pada RTX 3060 Ti 8 GB. Verifikasi ulang: 186 test lulus, termasuk operasi tensor GPU; Ruff lint/format bersih. Embedding BGE nyata masih baru diuji pada CPU. Config default tetap CPU dan `uv.lock` belum mengunci varian CUDA yang dipasang manual.
+
+**Handoff sesi berikutnya:** baca AGENTS.md, README, ARCHITECTURE, dan bagian M4 di bawah. Perubahan M3 masih ada di working tree, belum di-commit saat penutupan. Gunakan `.venv/Scripts/python.exe` langsung; hindari sinkronisasi environment sebelum memutuskan sumber/lock CUDA karena dapat mengganti build GPU. Jika ingin memakai GPU, rapikan konfigurasi/lock dan lakukan uji embedding nyata ke direktori eksperimen baru; cache CPU tidak membuktikan encoding GPU. Setelah itu lanjut M4: dense, BM25, RRF, reranker, dan Recall@k/MRR pada set validasi kecil. Jangan mengubah data M2/M3 atau dataset evaluasi untuk memperbaiki hasil. Belum ada implementasi M4–M7.
 
 ---
 

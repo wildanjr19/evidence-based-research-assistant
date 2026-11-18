@@ -1,6 +1,7 @@
 """Load the experiment configuration without initializing models or clients."""
 
 import math
+import re
 from dataclasses import MISSING, dataclass, fields
 from pathlib import Path
 from typing import TypeVar
@@ -45,6 +46,8 @@ class EmbeddingConfig:
     model: str
     batch_size: int
     device: str
+    revision: str = "a5beb1e3e68b9ab74eb54cfd186867f64f240e1a"
+    max_tokens: int = 512
 
 
 @dataclass(frozen=True)
@@ -206,6 +209,10 @@ def load_config(path: str | Path = "configs/config.yaml") -> Config:
         raise ConfigError("chunking.overlap_tokens: must be < chunking.target_tokens")
     if config.chunking.min_tokens > config.chunking.target_tokens:
         raise ConfigError("chunking.min_tokens: must be <= chunking.target_tokens")
+    if not re.fullmatch(r"[0-9a-f]{40}", config.embedding.revision):
+        raise ConfigError("embedding.revision: must be a pinned 40-character commit SHA")
+    if not re.fullmatch(r"cpu|cuda(?::[0-9]+)?", config.embedding.device):
+        raise ConfigError("embedding.device: must be cpu, cuda, or cuda:<index>")
     if config.generation.temperature < 0:
         raise ConfigError("generation.temperature: must be >= 0")
     if not 0 <= config.verification.judge_sample_rate <= 1:

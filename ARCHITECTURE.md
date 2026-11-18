@@ -80,6 +80,18 @@ Tokenisasi M2 adalah `lexical-v1`: regex `\w+|[^\w\s]`, bukan tokenizer model. `
 
 Pengulangan parsing memerlukan manifest yang sama. Penyimpanan chunk hanya menerima data baru atau baris yang persis sama dengan yang sudah ada. Perubahan input/config yang menghasilkan artefak berbeda ditolak tanpa menghapus chunk atau menimpa hasil parsed lama; gunakan direktori/database terpisah untuk eksperimen. Nama file memakai `safe_paper_id` seperti M1, tanpa mengubah ID kanonis. OCR dan ekstraksi tabel/referensi terstruktur belum termasuk M2.
 
+### Implementasi indexing M3
+
+Indexing membaca snapshot seluruh chunk ber-ID valid dari paper dengan `parse_status=ok`, termasuk `low_quality`. Tokenizer model menghitung special tokens tanpa truncation; input di atas `min(embedding.max_tokens, model.max_seq_length)` ditolak sebelum encoding/penulisan indeks. Chunk lama tidak diubah. Gunakan database/direktori terpisah untuk target chunking baru.
+
+Model BGE dikunci lewat `embedding.revision` berupa commit SHA, dengan embedding dokumen float32, ternormalisasi, tanpa prefix query. Cache per teks unik berada di `paths.cache_dir/embeddings/`; key mencakup hash teks dan identitas model/revision/dimensi/batas token/normalisasi/prefix. Cache diverifikasi sebelum dipakai. Bobot model berada di `paths.cache_dir/models/`.
+
+Tabel LanceDB `chunks` di `paths.index_dir/vectors.lance/` menyimpan `chunk_id`, `paper_id`, rentang halaman, section, quality flag, hash teks, dan fixed-size vector float32. Manifest model terpisah mencegah pencampuran embedding yang tidak kompatibel. Indeks keyword memakai virtual table FTS5 `chunk_fts(chunk_id UNINDEXED, text)` dengan tokenizer `unicode61 remove_diacritics 2` dalam database korpus. Ini implementasi indeks yang direncanakan pada tahap 5; tabel inti §4 dan format sitasi tetap sama. Pencarian BM25 mengurutkan skor SQLite secara ascending.
+
+Pengulangan hanya menambah ID yang belum ada, memverifikasi metadata/teks lama, dan memastikan jumlah baris kedua indeks sama dengan seluruh tabel `chunk`. Indeks yang berbeda, duplikat ID, atau cache rusak ditolak tanpa penghapusan otomatis. Indexing berjalan serial pada korpus yang tidak sedang dimodifikasi. Tidak ada transaksi lintas LanceDB dan SQLite; run parsial dilanjutkan dengan input sama dan belum dianggap sukses sebelum kedua jumlah cocok.
+
+Laporan baru di `paths.index_dir/reports/` mencatat config/hash, seed, versi library, model/revision, waktu termasuk pemuatan model/unduhan, jumlah chunk/vektor/FTS, token model seluruh chunk, token teks unik yang di-encode, embedding baru, dan cache hit teks unik. Laporan gagal juga disimpan; nama run dipesan sebelum indexing dan tidak menimpa run lama. Belum ada filter kualitas, fusion, reranking, atau evaluasi retrieval pada M3.
+
 ### 3.1 Alur runtime (query time)
 
 Tahap 6–8 dari tabel di atas, dirinci beserta cabang kegagalannya. Tidak ada langkah yang mem-parse PDF atau mengubah indeks.
@@ -375,9 +387,11 @@ Aturan pelaporan:
 
 `configs/config.yaml` memuat seluruh knob. Kunci wajib (lihat file untuk nilai default):
 
-`ingestion` (query, max_papers, page_size, request_delay_seconds, timeout_seconds, max_pdf_bytes, allowed_licenses), `parsing` (margin_ratio, repeated_margin_ratio, min_repeated_pages, heading_max_words), `chunking` (target_tokens, overlap_tokens, min_tokens, short_chunk_policy, tokenizer), `embedding` (model, batch_size, device), `retrieval` (dense_top_k, bm25_top_k, rrf_k, rerank_candidates, final_top_k, use_reranker), `generation` (model, temperature, max_calls_per_run), `verification` (minicheck_model, judge_model, judge_sample_rate, seed), `evaluation` (ks, dataset_path).
+`ingestion` (query, max_papers, page_size, request_delay_seconds, timeout_seconds, max_pdf_bytes, allowed_licenses), `parsing` (margin_ratio, repeated_margin_ratio, min_repeated_pages, heading_max_words), `chunking` (target_tokens, overlap_tokens, min_tokens, short_chunk_policy, tokenizer), `embedding` (model, revision, max_tokens, batch_size, device), `retrieval` (dense_top_k, bm25_top_k, rrf_k, rerank_candidates, final_top_k, use_reranker), `generation` (model, temperature, max_calls_per_run), `verification` (minicheck_model, judge_model, judge_sample_rate, seed), `evaluation` (ks, dataset_path).
 
 Untuk kompatibilitas config M0/M1, bagian `parsing` dan field baru `chunking.short_chunk_policy`/`tokenizer` memakai default bila tidak diberikan. Nilai efektif tetap disimpan di laporan. Nilai eksplisit yang salah, termasuk `parsing: null`, tetap ditolak.
+
+Config sebelum M3 memakai default `embedding.revision: a5beb1e3e68b9ab74eb54cfd186867f64f240e1a` dan `max_tokens: 512`. Revision itu milik `BAAI/bge-base-en-v1.5`; mengganti model wajib menyertakan revision yang sesuai. Device menerima `cpu`, `cuda`, atau `cuda:<index>`, tanpa fallback CPU diam-diam.
 
 ---
 

@@ -81,6 +81,9 @@ def test_missing_key_is_clear(config_data: dict, tmp_path: Path) -> None:
         ("chunking", "min_tokens", 401),
         ("embedding", "batch_size", 0),
         ("embedding", "model", "  "),
+        ("embedding", "revision", "main"),
+        ("embedding", "max_tokens", 0),
+        ("embedding", "device", "gpu"),
         ("retrieval", "use_reranker", "false"),
         ("retrieval", "final_top_k", 51),
         ("generation", "temperature", float("nan")),
@@ -170,3 +173,11 @@ def test_null_parsing_section_does_not_silently_use_defaults(
     config_data["parsing"] = None
     with pytest.raises(ConfigError, match="parsing"):
         load_config(write_config(tmp_path, config_data))
+
+
+def test_old_embedding_config_uses_pinned_defaults(config_data: dict, tmp_path: Path) -> None:
+    del config_data["embedding"]["revision"]
+    del config_data["embedding"]["max_tokens"]
+    config = load_config(write_config(tmp_path, config_data))
+    assert len(config.embedding.revision) == 40
+    assert config.embedding.max_tokens == 512

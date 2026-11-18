@@ -30,6 +30,8 @@ python -m uv run ruff format --check .             # format
 
 Di mesin pengembangan Windows, launcher `pytest.exe` diblokir Application Control; pemanggilan melalui `python -m pytest` sudah diverifikasi.
 
+Jika `.venv` sudah aktif, panggil `python -m pytest`, `python -m ruff`, atau `python -m rag...` langsung. `uv` terpasang di Python luar; `python -m uv` dalam `.venv` dapat gagal dengan `No module named uv`. Di Windows, `py -3.11 -m uv` memakai Python luar bila diperlukan.
+
 Perintah M1 (melakukan request arXiv; jalankan berurutan):
 
 ```bash
@@ -49,6 +51,16 @@ python -m uv run python -m rag.chunking --config configs/config.yaml
 ```
 
 Gunakan `--paper-id` untuk satu paper. Kedua perintah sudah diuji dengan config lokal terpisah pada PDF 16 halaman. `n_tokens` M2 memakai token leksikal, bukan tokenizer model; M3 wajib memeriksa batas embedding. Perubahan hasil parsing/chunking lama ditolak tanpa penghapusan otomatis. Alasan kegagalan berada di laporan run dalam `paths.parsed_dir/reports/`.
+
+Perintah M3 (seluruh tabel chunk; penggunaan pertama mengunduh bobot model):
+
+```bash
+python -m uv run python -m rag.indexing --config configs/config.yaml
+```
+
+Sudah diuji pada CPU dengan config `data/m3-smoke/config.yaml`: 21 chunk = 21 vektor = 21 FTS5; pengulangan offline memakai cache tanpa encoding baru. Laporan ada di `paths.index_dir/reports/`. Input melebihi batas tokenizer model ditolak tanpa truncation; gunakan database baru untuk chunk lebih kecil. Indexing dijalankan serial. M3 sudah ditutup; handoff ada di TASKS.md.
+
+PyTorch `2.15.0+cu132` dipasang manual oleh pengguna. CUDA dan operasi tensor GPU sudah diverifikasi pada RTX 3060 Ti; 186 test lulus. Embedding nyata masih diuji pada CPU dan default config tetap CPU. Lockfile belum disesuaikan dengan sumber CUDA. Untuk mempertahankan environment saat ini, gunakan `.venv/Scripts/python.exe` langsung untuk test/pipeline; jangan menjalankan `uv sync`/`uv run` yang menyinkronkan environment sebelum sumber/lock CUDA dirapikan. Uji embedding GPU berikutnya harus memakai cache baru agar tidak hanya membaca embedding CPU.
 
 Jalankan test dan lint setelah setiap perubahan kode, sebelum menyatakan tugas selesai.
 

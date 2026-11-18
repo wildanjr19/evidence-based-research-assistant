@@ -2,7 +2,7 @@
 
 Sistem RAG lokal untuk literatur ilmiah: setiap klaim dalam jawaban menunjuk ke chunk sumber (paper, halaman, kutipan), dan ketepatan sitasinya diukur, bukan diklaim.
 
-Status: **M0–M2 diimplementasikan**: fondasi config/ID, ingestion arXiv berlisensi, parsing PDF, dan chunking deterministik ke SQLite. Indexing, retrieval, generation, dan evaluasi belum tersedia. Belum ada angka evaluasi.
+Status: **M0–M3 diimplementasikan**: fondasi config/ID, ingestion arXiv berlisensi, parsing PDF, chunking deterministik, embedding cache, serta indeks LanceDB dan SQLite FTS5. Retrieval, generation, dan evaluasi belum tersedia. Belum ada angka evaluasi.
 
 ## Dokumentasi
 
@@ -33,9 +33,11 @@ python -m uv run ruff format --check .
 
 `uv.lock` mengunci versi dependensi; `uv sync` membuat `.venv` dan memasang dependensi runtime serta dev yang sudah disetujui. Bentuk `python -m uv` bisa dipakai ketika executable `uv` belum ada di `PATH`.
 
+Jika `.venv` sudah aktif, gunakan `python -m pytest`, `python -m ruff`, dan `python -m rag...` langsung. `uv` yang dipasang di Python luar tidak otomatis tersedia dalam `.venv`. Di Windows, `py -3.11 -m uv sync --locked` memanggil `uv` dari Python luar ketika environment aktif.
+
 Pemanggilan `python -m pytest` digunakan karena kebijakan Application Control Windows pada mesin pengembangan memblokir launcher `pytest.exe`.
 
-Config default memakai `embedding.device: cpu`. CUDA belum diverifikasi; pasang build CUDA dan periksa perangkat sebelum mengganti config. Setup tidak mengunduh bobot model atau memanggil API LLM.
+Config default memakai `embedding.device: cpu`. PyTorch CUDA telah dipasang manual dan operasi tensor GPU sudah diverifikasi pada mesin pengembangan; embedding nyata GPU belum diuji. `uv.lock` masih memakai sumber PyPI awal. `uv sync` atau `uv run` yang menyinkronkan environment dapat mengganti build CUDA; gunakan Python `.venv` langsung sampai sumber/lock CUDA dirapikan. Setup tidak mengunduh bobot model atau memanggil API LLM.
 
 ## Fondasi M0
 
@@ -102,6 +104,32 @@ Pengulangan memakai hasil parsing dengan manifest yang sama dan memverifikasi ke
 Verifikasi M2 pada 2026-11-18: 165 test lulus pada jalur penuh dan `not gpu`, lint serta format bersih. Test membuat PDF sintetis di direktori sementara, termasuk dua kolom, header/footer berulang, inline bold pada daftar bernomor, file rusak, dan halaman tanpa teks. Uji PDF nyata `arxiv:2605.14488v1` menghasilkan 20 chunk dari 16 halaman, tanpa token leksikal terbuang; pengulangan identik. Config, database salinan metadata M1, teks parsed, dan laporan berada di `data/m2-smoke-v2/` yang diabaikan Git. PDF asli dan database M1 dipertahankan. Percobaan awal dengan versi normalisasi lama tetap tersimpan di `data/m2-smoke/`.
 
 OCR belum tersedia. Tabel, rumus, layout lebih dari dua kolom, serta heading yang tidak biasa belum divalidasi pada korpus besar. Keberhasilan satu PDF tidak mengukur akurasi sitasi atau kualitas retrieval.
+
+## Indexing M3
+
+Setelah M2, jalankan dengan config korpus yang sama:
+
+```bash
+python -m uv run python -m rag.indexing --config configs/config.yaml
+```
+
+Dalam `.venv` aktif, cukup `python -m rag.indexing --config configs/config.yaml`. Tahap ini memproses seluruh tabel `chunk`, termasuk `low_quality`; penyaringan kualitas dilakukan saat retrieval M4. Jalankan satu proses indexing pada satu korpus, tanpa ingestion/chunking bersamaan.
+
+Embedder memakai [BAAI/bge-base-en-v1.5](https://huggingface.co/BAAI/bge-base-en-v1.5) berlisensi MIT melalui sentence-transformers. `embedding.revision` mengunci commit model, default `a5beb1e3e68b9ab74eb54cfd186867f64f240e1a`; `max_tokens: 512` membatasi input termasuk special tokens. Embedding dokumen tidak memakai prefix query, memakai float32, dan dinormalisasi. Bobot diunduh ke `paths.cache_dir/models/` pada penggunaan pertama. Tidak ada API LLM berbayar yang dipanggil.
+
+M3 menghitung token dengan tokenizer model sebelum encoding. Chunk yang melebihi batas ditolak dengan ID dan jumlah tokennya; teks tidak dipotong. Target 400 token leksikal M2 tidak menjamin muat dalam 512 token model. Bila terjadi penolakan, buat database chunk baru dengan target lebih kecil. Jangan mengganti teks atau menghapus chunk pada database lama.
+
+Vektor dan metadata ID/paper/halaman/section/kualitas disimpan dalam tabel `chunks` di `paths.index_dir/vectors.lance/`. Manifest mengunci identitas model dan dimensi. `chunk_fts` adalah virtual table FTS5 dalam database korpus, dengan tokenizer `unicode61 remove_diacritics 2`. Tokenizer ini sudah diuji terhadap pencarian huruf beraksen. SQLite `bm25()` menghasilkan skor lebih kecil untuk hasil lebih baik. Skema inti `paper`/`chunk` dan ID sitasi tetap sama.
+
+Cache embedding berada di `paths.cache_dir/embeddings/`, berdasarkan hash teks dan identitas model, revision, dimensi, batas token, normalisasi, serta prefix dokumen. Teks identik berbagi satu cache. Pengulangan memuat cache dan hanya menambah baris indeks yang belum ada. Cache rusak, metadata indeks berbeda, atau manifest model berubah ditolak tanpa penggantian otomatis. Run parsial dapat dilanjutkan dengan input yang sama; penulisan LanceDB dan FTS5 tidak berada dalam satu transaksi bersama.
+
+Laporan baru di `paths.index_dir/reports/` mencatat config efektif dan hash, seed, versi library, identitas model, jumlah chunk/vektor/FTS, waktu, token model, embedding baru, dan cache hit. Token model mencakup seluruh chunk; `computed_tokens` hanya menghitung teks unik yang baru di-encode. Waktu mencakup pemuatan model dan unduhan bila diperlukan. Kegagalan juga dilaporkan. Run lama tidak ditimpa.
+
+Verifikasi M3 pada 2026-11-18: 185 test lulus dan satu test GPU dilewati pada build CPU; Ruff lint/format bersih. Test menggunakan embedder mock bersama LanceDB dan SQLite FTS5 nyata, tanpa unduhan model/API. Uji model nyata pada CPU memakai paper M2 dan database baru di `data/m3-smoke/`: target 380 token leksikal menghasilkan 21 chunk, maksimum 491 token model. Jumlah di SQLite, LanceDB, dan FTS5 sama-sama 21. Run pertama menghitung 21 embedding/8.758 token dalam 20,38 detik. Pengulangan offline menghitung nol embedding, memakai 21 cache, dan selesai 6,00 detik. Ini uji satu paper, bukan benchmark korpus penuh. Database M2 asli tetap berisi 20 chunk; satu chunk lamanya berisi 514 token model dan tidak diubah.
+
+PyTorch dan LanceDB sudah berhasil diimpor setelah blokir Windows ditangani manual. Pengguna kemudian memasang PyTorch `2.15.0+cu132`; CUDA aktif pada RTX 3060 Ti 8 GB. Verifikasi ulang menghasilkan 186 test lulus, termasuk operasi tensor GPU; Ruff lint/format bersih. Embedding BGE nyata masih baru diuji pada CPU. Config default tetap `device: cpu`; permintaan `device: cuda` gagal dengan pesan jelas bila CUDA tidak tersedia.
+
+M3 ditutup pada 2026-11-18. Catatan handoff sesi berikutnya ada pada bagian M3 di `TASKS.md`: rapikan sumber/lock CUDA dan uji embedding GPU bila dipakai, lalu lanjut M4. Hasil CPU/corpus lama dipertahankan; uji GPU harus memakai cache/direktori baru untuk membuktikan encoding nyata, bukan hanya membaca cache CPU.
 
 ## Hasil evaluasi
 
