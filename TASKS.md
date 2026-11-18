@@ -137,6 +137,8 @@ Artefak baru ada di `data/m4-reranker-smoke/2026-11-18T07-06-30Z_b88c51/`: confi
 
 **Deliverable:** prompt grounding, klien LLM modular, validasi JSON klaim, render sitasi.
 
+**Status: ditutup (2026-11-18).** Seluruh acceptance criteria terpenuhi; verifikasi pada penutupan setelah penambahan loader `.env`: 283 test lulus, Ruff lint/format bersih. Penutupan mencakup implementasi dan pengujian dengan LLM mock/transport HTTP lokal. Hasil uji DeepSeek API nyata setelah penutupan dicatat terpisah di bawah sebagai persiapan M6.
+
 **Acceptance criteria:**
 
 - [x] Prompt hanya berisi chunk terambil; ada test yang memastikan tidak ada teks luar yang bocor ke prompt.
@@ -160,9 +162,30 @@ RAM diukur dengan Windows process memory counters dan mencakup runtime, embeddin
 
 Config, salinan data, skrip `smoke.py`, `first-evidence.json`, `repeat-evidence.json`, dan laporan generation tersimpan di direktori smoke tersebut, diabaikan Git. Tidak ada dependensi baru, sinkronisasi CUDA, perubahan format sitasi, atau perubahan baris korpus/dataset evaluasi.
 
-**Batas verifikasi:** LLM/provider API nyata, biaya/token aktual provider, dukungan semantik klaim, GPU, dan korpus penuh belum diuji. Config masih `deepseek-chat`; dokumentasi DeepSeek yang diperiksa kini mencantumkan `deepseek-flash` dan `deepseek-v4-pro`, sehingga alias awal perlu dikonfirmasi sebelum API berbayar. API key tidak dibaca dari `.env` otomatis.
+**Batas verifikasi pada penutupan M5:** LLM/provider API nyata, biaya/token aktual provider, dukungan semantik klaim, GPU, dan korpus penuh belum diuji. Config saat itu masih `deepseek-chat`; pemilihan dan uji model penggantinya dicatat pada bagian persiapan M6 di bawah.
 
-**Handoff M6:** implementasikan verifier lokal, runner evaluasi sitasi, dataset/gold set versi pertama sesuai protokol, dan laporan metrik. Pertahankan dataset yang sudah diberi label; jangan mengubah label untuk menaikkan skor. Validasi ID M5 bukan verifikasi bahwa teks chunk mendukung klaim. Sebelum memakai LLM live, pilih model yang tersedia dan lakukan smoke test berbayar terbatas lewat perintah eksplisit; pemilihan provider berdasarkan biaya/latensi masih terbuka. Untuk GPU, rapikan sumber/lock CUDA dan gunakan cache eksperimen baru agar membuktikan inference nyata.
+**Persiapan API — `.env`:** adapter kini membaca key provider terpilih dari `.env` di direktori kerja bila variabel environment belum ada. Environment tetap diprioritaskan; tidak ada ekspansi/eksekusi nilai, pemuatan variabel lain, dependensi baru, atau panggilan API otomatis. Test memakai key fixture dan transport HTTP mock, termasuk precedence, BOM/kutip/komentar, serta error tanpa bocor nilai. Format dan batas loader ada di USAGE.md.
+
+Verifikasi loader: 283 test lulus; Ruff lint/format bersih. Pemeriksaan lokal menemukan `.env` dan berhasil memuat key efektif tanpa mencetak nilainya; autentikasi provider belum diuji. Puncak working set proses pemeriksaan loader 23,68 MiB (runtime Python + impor modul, bukan seluruh pipeline). Tidak ada model GPU yang dimuat; VRAM tidak diukur. Tidak ada panggilan API berbayar.
+
+### Uji API DeepSeek sebelum M6 (2026-11-18)
+
+Pengguna memilih `deepseek-flash`. Config default diperbarui dengan `generation.thinking: false`; adapter mengirim mode ini secara eksplisit mengikuti [Thinking Mode DeepSeek](https://api-docs.deepseek.com/guides/thinking_mode/). Field boolean tervalidasi dan ikut identitas cache agar hasil thinking/non-thinking terpisah. Tidak ada dependensi baru. Verifikasi repo: 289 test lulus; Ruff lint/format bersih, termasuk test SDK transport mock untuk kedua mode serta pemisahan cache. Test otomatis tidak memakai API berbayar.
+
+Uji nyata dibatasi satu pertanyaan dan maksimal dua request, tanpa retry transport SDK. Pertanyaan: "Which three evaluation properties does the Deepchecks paper identify for a RAG system?" Retrieval/reranker CPU nyata mengambil delapan chunk dari salinan korpus satu paper. Satu request API berhasil (HTTP 200, finish reason `stop`), tanpa retry format: 3.921 input token, 208 output token; input provider cache hit 0 dan miss 3.921. Respons JSON memuat empat klaim, semuanya bersitasi ke `arxiv:2605.14488v1:p7:c11`; tidak ada ID ditolak atau usage hilang. Server melaporkan model `deepseek-flash` tanpa identitas snapshot yang lebih spesifik.
+
+Latensi HTTP termasuk pembacaan respons adalah 1,61 detik. Waktu alur pertama termasuk retrieval/pemuatan model dan pemeriksaan hasil: 24,79 detik. Berdasarkan [tarif resmi yang diperiksa](https://api-docs.deepseek.com/quick_start/pricing/), estimasi biaya request adalah US$0,00071295 pada tarif off-peak atau US$0,0014259 pada tarif peak. Kedua tarif disimpan untuk transparansi; ini estimasi dari token usage, bukan pembacaan tagihan/saldo akun.
+
+Pengulangan pada proses baru memakai satu cache hit lokal, nol request API dan nol token baru, menghasilkan Markdown/referensi identik dalam 5,02 detik. Run pertama `2026-11-18T09:09:00Z_d70d6d`, pengulangan `2026-11-18T09:09:29Z_65bf06`; database eksperimen menyimpan dua run, dua answer, delapan claim dengan foreign key check bersih. Hash database/seluruh file indeks M3 asli serta baris paper/chunk/FTS salinan eksperimen tetap sama.
+
+| Proses uji API | Puncak working set | Puncak private commit | Puncak VRAM PyTorch |
+|---|---|---|---|
+| Retrieval/reranker CPU + DeepSeek API | 3,05 GiB | 5,05 GiB | 0 byte |
+| Pengulangan dengan cache | 1,27 GiB | 3,08 GiB | 0 byte |
+
+RAM mencakup proses Python lokal, bukan RAM model LLM di server. CUDA tidak diinisialisasi; angka VRAM berasal dari allocator PyTorch proses ini, bukan pemakaian GPU seluruh sistem. Artefak di `data/deepseek-smoke/2026-11-18T09-07-49Z_733dac/`: manifest/config, `smoke.py`, `first-evidence.json`, `repeat-evidence.json`, salinan database/indeks, dan laporan generation. Artefak diabaikan Git dan tidak menyimpan key API. Satu pertanyaan ini memvalidasi integrasi/format/cache; belum menjadi benchmark kualitas, abstention, faithfulness, perbandingan model, GPU, atau korpus penuh.
+
+**Handoff M6:** koneksi DeepSeek Flash dan cache sudah diuji. Implementasikan verifier lokal, runner evaluasi sitasi, dataset/gold set versi pertama sesuai protokol, dan laporan metrik. Pertahankan dataset yang sudah diberi label; jangan mengubah label untuk menaikkan skor. Validasi ID M5 bukan verifikasi bahwa teks chunk mendukung klaim. Untuk GPU, rapikan sumber/lock CUDA dan gunakan cache eksperimen baru agar membuktikan inference nyata.
 
 ---
 

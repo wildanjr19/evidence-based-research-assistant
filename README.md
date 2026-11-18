@@ -24,7 +24,7 @@ Stack utama: Python, PyMuPDF, BGE, LanceDB, dan SQLite FTS5. UI direncanakan mem
 
 **M0 sampai M5 sudah diimplementasikan:** ingestion, parsing, chunking, indexing, retrieval dengan reranker opsional, evaluasi retrieval, serta generasi JSON klaim dengan validasi sitasi dan cache respons.
 
-Retrieval dengan embedding/reranker nyata diuji pada satu paper di CPU; generasi diuji dengan LLM mock tanpa API berbayar. Verifikasi dukungan klaim, evaluasi sitasi, UI, korpus final, dan dataset evaluasi final belum tersedia. Hasil verifikasi ada di [TASKS.md](TASKS.md).
+Retrieval dengan embedding/reranker nyata diuji pada satu paper di CPU; generasi diuji dengan LLM mock dan satu pertanyaan melalui DeepSeek Flash API nyata. Verifikasi dukungan klaim, evaluasi sitasi, UI, korpus final, dan dataset evaluasi final belum tersedia. Hasil verifikasi ada di [TASKS.md](TASKS.md).
 
 ## Mulai dan dokumentasi
 

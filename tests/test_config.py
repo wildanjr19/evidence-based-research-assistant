@@ -97,6 +97,7 @@ def test_missing_key_is_clear(config_data: dict, tmp_path: Path) -> None:
         ("generation", "max_output_tokens", 0),
         ("generation", "timeout_seconds", 0),
         ("generation", "provider", "unknown"),
+        ("generation", "thinking", "false"),
         ("generation", "base_url", "http://example.invalid"),
         ("generation", "base_url", "https://key@example.invalid"),
         ("generation", "base_url", "https://example.invalid?key=secret"),
@@ -206,9 +207,10 @@ def test_old_retrieval_configs_use_m4_defaults_and_prefix_can_be_disabled(
 
 
 def test_old_generation_configs_get_m5_limits(config_data: dict, tmp_path: Path) -> None:
-    for key in ("max_output_tokens", "timeout_seconds", "base_url"):
+    for key in ("max_output_tokens", "timeout_seconds", "base_url", "thinking"):
         del config_data["generation"][key]
     config = load_config(write_config(tmp_path, config_data))
     assert config.generation.max_output_tokens == 2048
     assert config.generation.timeout_seconds == 60.0
     assert config.generation.base_url == ""
+    assert config.generation.thinking is False

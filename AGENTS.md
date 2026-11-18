@@ -59,7 +59,7 @@ Perintah M5 (default hanya membaca cache LLM; cache miss tidak memanggil API):
 .venv/Scripts/python.exe -m rag.generation --config configs/config.yaml --question "How is RAG retrieval evaluated?" --mode hybrid
 ```
 
-Panggilan LLM nyata memerlukan `--allow-api`, model yang tersedia, dan key provider di environment. `.env` tidak dibaca otomatis. Config awal `deepseek-chat` belum divalidasi live; pastikan model sebelum panggilan berbayar. M5 diuji dengan LLM mock/transport HTTP lokal, tanpa API berbayar. Smoke test memakai salinan database/index, retrieval CPU nyata, dan cache respons. Tabel `run`/`answer`/`claim` mengikuti skema ARCHITECTURE.md; tabel sumber tetap. Detail RAM/VRAM serta handoff ada di TASKS.md bagian M5.
+Panggilan LLM nyata memerlukan `--allow-api`, model yang tersedia, dan key provider di environment atau `.env` pada direktori kerja. Environment diprioritaskan; loader hanya membaca key provider terpilih dan tidak mengubah environment. Format `.env` ada di USAGE.md. Pengguna memilih `deepseek-flash`, dengan `generation.thinking: false`; mode thinking termasuk identitas cache. M5 diuji dengan mock/transport HTTP lokal. Uji API nyata setelah penutupan M5 berhasil pada satu pertanyaan (satu request); pengulangan memakai cache tanpa request baru. Test otomatis tetap tanpa API berbayar. Smoke test memakai salinan database/index, retrieval CPU nyata, dan cache respons. Tabel `run`/`answer`/`claim` mengikuti skema ARCHITECTURE.md; tabel sumber tetap. Detail RAM/VRAM serta handoff ada di TASKS.md bagian M5.
 
 Perintah M2 (lokal, memakai corpus hasil M1):
 

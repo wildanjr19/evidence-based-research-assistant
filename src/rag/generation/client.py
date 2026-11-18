@@ -31,14 +31,41 @@ class LLMBackend(Protocol):
     def complete(self, messages: list[dict[str, str]], config: Config) -> Completion: ...
 
 
+def _api_key(variable: str) -> str:
+    key = os.environ.get(variable)
+    if key is None:
+        try:
+            lines = Path(".env").read_text(encoding="utf-8-sig").splitlines()
+        except FileNotFoundError:
+            lines = []
+        except (OSError, UnicodeError):
+            raise LLMError(
+                "Cannot read .env; use UTF-8 or set the provider environment variable"
+            ) from None
+        # Read only the selected provider key; never execute or expand .env values.
+        for line in lines:
+            name, separator, value = line.strip().removeprefix("export ").partition("=")
+            if not separator or name.strip() != variable:
+                continue
+            value = value.strip()
+            if value.startswith(("'", '"')):
+                value, closed, suffix = value[1:].partition(value[0])
+                if not closed or (suffix.strip() and not suffix.lstrip().startswith("#")):
+                    raise LLMError(f"Invalid single-line value for {variable} in .env")
+            else:
+                value = value.split("#", 1)[0].rstrip()
+            key = value
+    if not key or not key.strip():
+        raise LLMError(f"Missing {variable}; set it in the environment or .env")
+    return key
+
+
 class OpenAIBackend:
     def complete(self, messages: list[dict[str, str]], config: Config) -> Completion:
         from openai import OpenAI
 
         endpoint, variable = PROVIDERS[config.generation.provider]
-        key = os.environ.get(variable)
-        if not key or not key.strip():
-            raise LLMError(f"Missing environment variable {variable}")
+        key = _api_key(variable)
         parameters = {
             "model": config.generation.model,
             "messages": messages,
@@ -49,6 +76,10 @@ class OpenAIBackend:
             "max_tokens" if config.generation.provider == "deepseek" else "max_completion_tokens"
         )
         parameters[token_parameter] = config.generation.max_output_tokens
+        if config.generation.provider == "deepseek":
+            parameters["extra_body"] = {
+                "thinking": {"type": "enabled" if config.generation.thinking else "disabled"}
+            }
         # SDK retries must not bypass the experiment's call budget.
         with OpenAI(
             api_key=key,
@@ -105,6 +136,9 @@ class CachedLLM:
             "model": config.generation.model,
             "temperature": config.generation.temperature,
             "max_output_tokens": config.generation.max_output_tokens,
+            "thinking": config.generation.thinking
+            if config.generation.provider == "deepseek"
+            else None,
             "backend": self.backend_name,
             "messages": messages,
         }

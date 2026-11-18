@@ -74,6 +74,7 @@ class GenerationConfig:
     max_output_tokens: int = 2048
     timeout_seconds: float = 60.0
     base_url: str = ""
+    thinking: bool = False
 
 
 @dataclass(frozen=True)

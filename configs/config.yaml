@@ -42,7 +42,8 @@ retrieval:
 
 generation:
   provider: deepseek
-  model: deepseek-chat
+  model: deepseek-flash
+  thinking: false
   temperature: 0.0
   max_calls_per_run: 200
   max_output_tokens: 2048

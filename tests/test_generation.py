@@ -12,7 +12,7 @@ from rag.chunking.pipeline import CHUNK_SCHEMA, save_chunks
 from rag.config import Config, load_config
 from rag.generation.__main__ import main
 from rag.generation.citations import ResponseFormatError, parse_claims
-from rag.generation.client import Completion, OpenAIBackend
+from rag.generation.client import Completion, LLMError, OpenAIBackend, _api_key
 from rag.generation.pipeline import answer_question, generate_answer
 from rag.generation.prompt import build_messages
 from rag.generation.render import render_answer
@@ -357,16 +357,30 @@ def test_bm25_to_generation_integration_uses_real_fts_and_mock_llm(corpus: tuple
 
 
 @pytest.mark.parametrize("provider", ["deepseek", "openai"])
+@pytest.mark.parametrize("key_source", ["environment", "dotenv"])
+@pytest.mark.parametrize("thinking", [False, True])
 def test_actual_sdk_with_mock_http_transport_records_usage_and_disables_retries(
-    corpus: tuple, monkeypatch: pytest.MonkeyPatch, provider: str
+    corpus: tuple,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    provider: str,
+    key_source: str,
+    thinking: bool,
 ) -> None:
     import httpx2
     import openai
 
     config, rows = corpus
-    config = replace(config, generation=replace(config.generation, provider=provider))
+    config = replace(
+        config, generation=replace(config.generation, provider=provider, thinking=thinking)
+    )
     variable = "DEEPSEEK_API_KEY" if provider == "deepseek" else "OPENAI_API_KEY"
-    monkeypatch.setenv(variable, "test-secret-key")
+    monkeypatch.chdir(tmp_path)
+    if key_source == "environment":
+        monkeypatch.setenv(variable, "test-secret-key")
+    else:
+        monkeypatch.delenv(variable, raising=False)
+        (tmp_path / ".env").write_text(f'{variable}="test-secret-key"\n', encoding="utf-8")
     original = openai.OpenAI
     observed = []
     options = []
@@ -404,8 +418,83 @@ def test_actual_sdk_with_mock_http_transport_records_usage_and_disables_retries(
     assert observed[0]["response_format"] == {"type": "json_object"}
     parameter = "max_tokens" if provider == "deepseek" else "max_completion_tokens"
     assert observed[0][parameter] == config.generation.max_output_tokens
+    if provider == "deepseek":
+        assert observed[0]["thinking"] == {"type": "enabled" if thinking else "disabled"}
+    else:
+        assert "thinking" not in observed[0]
     assert options[0]["max_retries"] == 0 and options[0]["timeout"] == 60.0
     assert "test-secret-key" not in json.dumps(result)
+
+
+def test_thinking_mode_separates_response_caches(corpus: tuple) -> None:
+    config, rows = corpus
+    backend = FakeLLM([completion([]), completion([])])
+    first = generate_answer("Thinking cache", rows[:1], config, backend)
+    thinking = replace(config, generation=replace(config.generation, thinking=True))
+    second = generate_answer("Thinking cache", rows[:1], thinking, backend)
+    repeat = generate_answer("Thinking cache", rows[:1], thinking, backend)
+    assert first["backend_calls"] == second["backend_calls"] == 1
+    assert repeat["backend_calls"] == 0 and repeat["cache_hits"] == 1
+
+
+@pytest.mark.parametrize(
+    "assignment",
+    [
+        "DEEPSEEK_API_KEY=fixture-key",
+        "export DEEPSEEK_API_KEY = 'fixture-key' # local key",
+        'DEEPSEEK_API_KEY="fixture-key"',
+        "DEEPSEEK_API_KEY=fixture-key # local key",
+    ],
+)
+def test_dotenv_reads_only_provider_key_without_changing_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, assignment: str
+) -> None:
+    import os
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    path = tmp_path / ".env"
+    path.write_text(f"# local settings\nUNRELATED_KEY=ignore\n{assignment}\n", encoding="utf-8-sig")
+    before = dict(os.environ)
+    assert _api_key("DEEPSEEK_API_KEY") == "fixture-key"
+    assert dict(os.environ) == before
+
+
+@pytest.mark.parametrize("environment_key", ["environment-fixture", "", "   "])
+def test_environment_key_takes_precedence_over_dotenv(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, environment_key: str
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DEEPSEEK_API_KEY", environment_key)
+    (tmp_path / ".env").write_bytes(b"\xff")
+    if environment_key.strip():
+        assert _api_key("DEEPSEEK_API_KEY") == environment_key
+    else:
+        with pytest.raises(LLMError, match="Missing DEEPSEEK_API_KEY"):
+            _api_key("DEEPSEEK_API_KEY")
+
+
+@pytest.mark.parametrize(
+    "contents",
+    [
+        None,
+        b"DEEPSEEK_API_KEY=\n",
+        b"OPENAI_API_KEY=other-secret\n",
+        b'DEEPSEEK_API_KEY="secret-never-print\n',
+        b"DEEPSEEK_API_KEY='secret-never-print' trailing\n",
+        b"DEEPSEEK_API_KEY=\xff\n",
+    ],
+)
+def test_dotenv_errors_never_expose_contents(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, contents: bytes | None
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    if contents is not None:
+        (tmp_path / ".env").write_bytes(contents)
+    with pytest.raises(LLMError) as error:
+        _api_key("DEEPSEEK_API_KEY")
+    assert "secret" not in str(error.value)
 
 
 def test_sdk_transport_error_makes_one_request_without_exposing_response_body(
