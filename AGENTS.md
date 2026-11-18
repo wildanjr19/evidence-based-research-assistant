@@ -13,6 +13,7 @@ Sumber kebenaran, baca sebelum mengubah arsitektur:
 - `ARCHITECTURE.md`: arsitektur, skema data, format ID/sitasi, protokol evaluasi, keputusan desain.
 - `DESIGN.md`: sistem desain visual UI (warna, tipografi, spacing). Bukan dokumen arsitektur.
 - `TASKS.md`: milestone dan acceptance criteria.
+- `USAGE.md`: setup, perintah pipeline, dan batas penggunaan. README berfokus pada pengantar proyek; catatan verifikasi/handoff disimpan di TASKS.md.
 
 Jika kode dan dokumen bertentangan, jangan menebak. Tanyakan, atau tandai ketidaksesuaiannya di jawabanmu.
 
@@ -41,7 +42,24 @@ python -m uv run python -m rag.ingestion fetch --config configs/config.yaml
 
 Sudah diuji nyata dengan config terpisah yang membatasi satu kandidat. Default repo membatasi 10 kandidat; korpus final belum diunduh. Test tetap memakai fixture lokal.
 
-TODO M6: implementasikan dan verifikasi perintah evaluasi retrieval/sitasi. Runner evaluasi belum tersedia; lokasi config adalah `configs/config.yaml`.
+Runner evaluasi retrieval M4 sudah tersedia; evaluasi sitasi menunggu M6. Dataset final `eval/questions.jsonl` belum tersedia, sehingga evaluasi awal memerlukan `--dataset` yang gold ID-nya sesuai korpus. Perintah dan batas metrik ada di `USAGE.md`.
+
+Perintah M4 (indeks M3 harus sudah lengkap; penggunaan reranker pertama mengunduh bobot):
+
+```bash
+.venv/Scripts/python.exe -m rag.retrieval --config configs/config.yaml --question "How is RAG retrieval evaluated?" --mode hybrid
+.venv/Scripts/python.exe -m rag.evaluation --config configs/config.yaml --dataset data/validation/questions.jsonl --mode all
+```
+
+Path `data/validation/questions.jsonl` pada contoh harus disiapkan lebih dulu. Empat mode diuji dengan fixture lokal dan smoke test CPU pada satu paper. BGE reranker nyata berhasil menghitung 105 pasangan; pengulangan offline memakai 105 cache hit dengan ranking identik. Query embedding/reranker GPU dan korpus penuh belum diuji. Laporan per mode memakai direktori run baru; detail verifikasi/handoff ada di TASKS.md bagian M4.
+
+Perintah M5 (default hanya membaca cache LLM; cache miss tidak memanggil API):
+
+```bash
+.venv/Scripts/python.exe -m rag.generation --config configs/config.yaml --question "How is RAG retrieval evaluated?" --mode hybrid
+```
+
+Panggilan LLM nyata memerlukan `--allow-api`, model yang tersedia, dan key provider di environment. `.env` tidak dibaca otomatis. Config awal `deepseek-chat` belum divalidasi live; pastikan model sebelum panggilan berbayar. M5 diuji dengan LLM mock/transport HTTP lokal, tanpa API berbayar. Smoke test memakai salinan database/index, retrieval CPU nyata, dan cache respons. Tabel `run`/`answer`/`claim` mengikuti skema ARCHITECTURE.md; tabel sumber tetap. Detail RAM/VRAM serta handoff ada di TASKS.md bagian M5.
 
 Perintah M2 (lokal, memakai corpus hasil M1):
 

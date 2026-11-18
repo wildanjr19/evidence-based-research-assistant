@@ -44,7 +44,7 @@ Proyek ini adalah sistem **Retrieval-Augmented Generation (RAG)** yang berjalan 
 | 3 | Jawaban dengan sitasi per klaim yang dapat ditelusuri | Setiap klaim memiliki ID chunk, paper, dan halaman |
 | 4 | Evaluasi sitasi yang terukur | Laporan citation precision, citation recall, dan faithfulness pada 30-50 pertanyaan uji |
 | 5 | Dapat dijalankan penuh di lokal dengan biaya rendah | Satu PC, tanpa server cloud, biaya API hanya beberapa dolar |
-| 6 | Dokumentasi layak portofolio | README berisi arsitektur, keputusan desain, hasil evaluasi, dan analisis kegagalan |
+| 6 | Dokumentasi layak portofolio | README memperkenalkan proyek dan menautkan panduan penggunaan, arsitektur, keputusan desain, hasil evaluasi, dan analisis kegagalan |
 
 **Prioritas pengerjaan:** Goal 1-4 adalah inti. Goal 5-6 dikerjakan paralel. Tabel perbandingan metode dan evidence map hanya dikerjakan bila waktu tersisa.
 
@@ -76,7 +76,7 @@ PC lab: Intel i9 HX, RAM 64 GB, VRAM 8 GB. Cukup untuk menjalankan embedding, re
 
 ### 3.1 Model ML: default dan alternatif
 
-> Semua angka adalah **perkiraan kasar** (asumsi: korpus ~500 paper, ~20-30 ribu chunk @ ~400 token, GPU 8 GB VRAM). Akan diverifikasi lewat benchmark di PC lab dan hasilnya dicatat di README.
+> Semua angka adalah **perkiraan kasar** (asumsi: korpus ~500 paper, ~20-30 ribu chunk @ ~400 token, GPU 8 GB VRAM). Akan diverifikasi lewat benchmark di PC lab; hasil verifikasi awal dicatat di TASKS.md dan laporan evaluasi di `eval/results/<run_id>/`.
 
 #### a. Embedding
 
@@ -195,5 +195,5 @@ Pertanyaan -> Hybrid retrieval (+ rerank) -> LLM (API)
 - Dataset uji (pertanyaan, jawaban rujukan, paper rujukan) dengan campuran lookup, comparison, synthesis, dan unanswerable.
 - UI demo Streamlit dengan lingkup v1: input pertanyaan dan contoh pertanyaan; klaim beserta sitasi yang bisa dibuka (paper, halaman, section, kutipan asli); penanda untuk klaim tanpa bukti.
 - Laporan evaluasi: BM25 vs dense vs hybrid vs hybrid+rerank, serta metrik ketepatan sitasi.
-- README dengan arsitektur, keputusan desain, dan analisis kegagalan.
+- README sebagai pengantar proyek, USAGE.md untuk panduan penggunaan, serta tautan ke arsitektur, keputusan desain, dan laporan evaluasi/analisis kegagalan.
 - Demo singkat (GIF atau video).

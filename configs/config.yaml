@@ -35,12 +35,19 @@ retrieval:
   final_top_k: 8
   use_reranker: true
   reranker_model: BAAI/bge-reranker-base
+  query_prefix: 'Represent this sentence for searching relevant passages: '
+  reranker_revision: 2cfc18c9415c912f9d8155881c133215df768a70
+  reranker_max_tokens: 512
+  reranker_batch_size: 16
 
 generation:
   provider: deepseek
   model: deepseek-chat
   temperature: 0.0
   max_calls_per_run: 200
+  max_output_tokens: 2048
+  timeout_seconds: 60.0
+  base_url: ''
 
 verification:
   minicheck_model: lytang/MiniCheck-Flan-T5-Large

@@ -59,6 +59,10 @@ class RetrievalConfig:
     final_top_k: int
     use_reranker: bool
     reranker_model: str
+    query_prefix: str = "Represent this sentence for searching relevant passages: "
+    reranker_revision: str = "2cfc18c9415c912f9d8155881c133215df768a70"
+    reranker_max_tokens: int = 512
+    reranker_batch_size: int = 16
 
 
 @dataclass(frozen=True)
@@ -67,6 +71,9 @@ class GenerationConfig:
     model: str
     temperature: float
     max_calls_per_run: int
+    max_output_tokens: int = 2048
+    timeout_seconds: float = 60.0
+    base_url: str = ""
 
 
 @dataclass(frozen=True)
@@ -112,7 +119,11 @@ T = TypeVar("T")
 
 
 def _parse_value(value: object, expected: object, key: str) -> object:
-    if expected is str and isinstance(value, str) and value.strip():
+    if (
+        expected is str
+        and isinstance(value, str)
+        and (value.strip() or key in {"retrieval.query_prefix", "generation.base_url"})
+    ):
         return value
     if expected is bool and type(value) is bool:
         return value
@@ -211,10 +222,35 @@ def load_config(path: str | Path = "configs/config.yaml") -> Config:
         raise ConfigError("chunking.min_tokens: must be <= chunking.target_tokens")
     if not re.fullmatch(r"[0-9a-f]{40}", config.embedding.revision):
         raise ConfigError("embedding.revision: must be a pinned 40-character commit SHA")
+    if not re.fullmatch(r"[0-9a-f]{40}", config.retrieval.reranker_revision):
+        raise ConfigError("retrieval.reranker_revision: must be a pinned 40-character commit SHA")
     if not re.fullmatch(r"cpu|cuda(?::[0-9]+)?", config.embedding.device):
         raise ConfigError("embedding.device: must be cpu, cuda, or cuda:<index>")
     if config.generation.temperature < 0:
         raise ConfigError("generation.temperature: must be >= 0")
+    if config.generation.timeout_seconds <= 0:
+        raise ConfigError("generation.timeout_seconds: must be > 0")
+    if config.generation.provider not in {"deepseek", "openai"}:
+        raise ConfigError("generation.provider: must be deepseek or openai")
+    if config.generation.base_url:
+        from urllib.parse import urlsplit
+
+        try:
+            url = urlsplit(config.generation.base_url)
+            _ = url.port
+        except ValueError as exc:
+            raise ConfigError("generation.base_url: invalid HTTPS URL") from exc
+        if (
+            url.scheme != "https"
+            or not url.hostname
+            or url.username
+            or url.password
+            or url.query
+            or url.fragment
+        ):
+            raise ConfigError(
+                "generation.base_url: use an HTTPS URL without credentials/query/fragment"
+            )
     if not 0 <= config.verification.judge_sample_rate <= 1:
         raise ConfigError("verification.judge_sample_rate: must be between 0 and 1")
     if (

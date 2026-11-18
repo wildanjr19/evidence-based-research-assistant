@@ -85,12 +85,22 @@ def test_missing_key_is_clear(config_data: dict, tmp_path: Path) -> None:
         ("embedding", "max_tokens", 0),
         ("embedding", "device", "gpu"),
         ("retrieval", "use_reranker", "false"),
+        ("retrieval", "reranker_revision", "main"),
+        ("retrieval", "reranker_max_tokens", 0),
+        ("retrieval", "reranker_batch_size", 0),
         ("retrieval", "final_top_k", 51),
         ("generation", "temperature", float("nan")),
         ("generation", "temperature", float("inf")),
         ("generation", "temperature", -0.1),
         ("generation", "temperature", False),
         ("generation", "max_calls_per_run", 0),
+        ("generation", "max_output_tokens", 0),
+        ("generation", "timeout_seconds", 0),
+        ("generation", "provider", "unknown"),
+        ("generation", "base_url", "http://example.invalid"),
+        ("generation", "base_url", "https://key@example.invalid"),
+        ("generation", "base_url", "https://example.invalid?key=secret"),
+        ("generation", "base_url", "https://[invalid"),
         ("verification", "judge_sample_rate", 1.1),
         ("verification", "judge_sample_rate", -0.1),
         ("verification", "seed", -1),
@@ -181,3 +191,24 @@ def test_old_embedding_config_uses_pinned_defaults(config_data: dict, tmp_path: 
     config = load_config(write_config(tmp_path, config_data))
     assert len(config.embedding.revision) == 40
     assert config.embedding.max_tokens == 512
+
+
+def test_old_retrieval_configs_use_m4_defaults_and_prefix_can_be_disabled(
+    config_data: dict, tmp_path: Path
+) -> None:
+    for key in ("query_prefix", "reranker_revision", "reranker_max_tokens", "reranker_batch_size"):
+        del config_data["retrieval"][key]
+    config = load_config(write_config(tmp_path, config_data))
+    assert len(config.retrieval.reranker_revision) == 40
+    assert config.retrieval.reranker_max_tokens == 512
+    config_data["retrieval"]["query_prefix"] = ""
+    assert load_config(write_config(tmp_path, config_data)).retrieval.query_prefix == ""
+
+
+def test_old_generation_configs_get_m5_limits(config_data: dict, tmp_path: Path) -> None:
+    for key in ("max_output_tokens", "timeout_seconds", "base_url"):
+        del config_data["generation"][key]
+    config = load_config(write_config(tmp_path, config_data))
+    assert config.generation.max_output_tokens == 2048
+    assert config.generation.timeout_seconds == 60.0
+    assert config.generation.base_url == ""

@@ -12,7 +12,7 @@ Spesifikasi teknis Evidence-Based Research Assistant. Dokumen ini adalah sumber 
 
 ## 1. Prinsip
 
-1. **Satu arah data.** Ingestion hanya menulis ke SQLite + indeks. Retrieval hanya membaca. Generation tidak pernah menyentuh disk korpus langsung.
+1. **Satu arah data.** Ingestion menulis SQLite + indeks. Retrieval hanya membaca. Generation memakai metadata store untuk validasi ID dan penyimpanan `run`/`answer`/`claim`; generation tidak mengubah paper, chunk, PDF, atau indeks.
 2. **Logika terpisah dari I/O.** Fungsi inti (chunking, fusion RRF, parsing sitasi, validasi ID) murni dan bisa diuji tanpa jaringan/GPU/disk.
 3. **Semua yang bisa dieksperimenkan masuk config.** Ukuran chunk, bobot RRF, top-k, nama model, seed — tidak ada yang hardcoded di fungsi.
 4. **Jawaban adalah data terstruktur dulu, teks belakangan.** LLM menghasilkan klaim + ID chunk dalam bentuk JSON yang divalidasi, baru dirender ke Markdown. Ini yang membuat citation precision/recall bisa dihitung mesin.
@@ -330,6 +330,24 @@ Kondisi eksperimen yang wajib dilaporkan (Goal 2): BM25 saja, dense saja, hybrid
 
 Reranker bersifat opsional saat runtime (flag config) supaya ablasi bisa dijalankan tanpa mengubah kode.
 
+### Implementasi M4
+
+`retrieval.Retriever` membuka SQLite dengan `mode=ro`, memuat snapshot chunk kanonis, dan memeriksa indeks yang dipakai terhadap snapshot itu. Indeks yang hilang/parsial, teks atau metadata yang berbeda, dan model query yang tidak cocok dengan manifest M3 ditolak. Retrieval tidak membuat tabel atau memperbarui korpus. Jalankan pada korpus yang tidak sedang diubah. Model dimuat saat diperlukan; BM25 dan hasil kosong karena semua chunk `low_quality` tidak memuat model.
+
+BM25 mengekstrak term leksikal, mengutipnya sebagai literal FTS5, lalu menggabungkannya dengan OR; operator dari input pengguna tidak dieksekusi sebagai sintaks FTS. Filter kualitas diterapkan sebelum LIMIT. Dense memakai cosine exact search di LanceDB dengan prefilter kualitas. Semua jarak kandidat diurutkan menurut jarak lalu ID, termasuk skor seri pada batas top-k. Ini baseline exact scan untuk skala v1, bukan ANN. Kedua indeks hanya mengembalikan ID/skor; teks dan metadata jawaban diambil dari snapshot SQLite.
+
+Query embedding memakai `retrieval.query_prefix`, default instruksi Inggris dari [model card BGE](https://huggingface.co/BAAI/bge-base-en-v1.5), tanpa mengubah embedding dokumen M3. Nilai kosong menonaktifkan prefix. Batas tokenizer mencakup prefix dan special tokens, tanpa truncation. Encoding memakai cache embedding M3 berdasarkan teks berprefix dan identitas model. RRF memakai rank mulai 1, satu kontribusi per ID per daftar, bobot sama, dan pemecah skor seri menurut ID. Hasil fusion dibatasi `rerank_candidates` sebelum reranking opsional, kemudian `final_top_k` untuk konteks jawaban.
+
+[BGE reranker](https://huggingface.co/BAAI/bge-reranker-base) memakai revision commit yang dikunci, inference lokal/eval, dan satu raw logit per pasangan query/dokumen. Device mengikuti embedding; batch serta panjang pasangan berasal dari config. Kebijakan `only_second` mempertahankan query dan memotong hanya tampilan dokumen untuk reranker. Query yang tidak menyisakan ruang ditolak. Chunk asli dan ID sitasi tidak diubah. Cache per pasangan mencakup model/revision, batas token, kebijakan truncation, serta hash query dan teks. Nilai cache/inference harus finite. Skor BM25, cosine, RRF, dan logit memiliki jenis berbeda dan tidak dibandingkan lintas mode.
+
+### Evaluasi retrieval M4
+
+`python -m rag.evaluation` menjalankan empat mode atau satu mode pilihan. Format dataset tetap seperti §4; fixture validasi sintetis berada di `tests/fixtures/`, terpisah dari gold set final M6. Runner memvalidasi qid, tipe pertanyaan, ID chunk/paper, dan keanggotaan gold chunk dalam korpus; tidak menulis ulang dataset.
+
+Ranking evaluasi memiliki kedalaman `max(evaluation.ks)` agar default Recall@20 tidak dibatasi `final_top_k=8` untuk prompt. Kapasitas dense/BM25/fusion tetap mengikuti config. MRR dihitung terhadap ranking yang dikembalikan pada kedalaman itu (default 20), dengan 0 bila tidak ada gold yang ditemukan. Recall dan MRR dirata-ratakan per pertanyaan answerable. Pertanyaan unanswerable tetap dilaporkan, dengan metrik `null` dan tanpa kontribusi pada rata-rata; evaluasi abstention/faithfulness menunggu generation dan M6.
+
+Setiap mode memesan direktori run baru, lalu menyimpan `metrics.json`, `per_question.jsonl`, dan `report.md`, termasuk pada kegagalan inference. Manifest mencatat mode, kedalaman ranking, config efektif/hash, seed, code version, versi library/SQLite, identitas model dan backend aktual, versi tabel vektor, hash dataset/korpus, jumlah pertanyaan, statistik cache, dan waktu. Override path dataset dicatat pada config efektif. Nama direktori memakai run ID dengan `:` diganti `-` untuk Windows; run ID di JSON tetap sesuai `ids.py`. Hasil lama tidak ditimpa.
+
 ---
 
 ## 8. Generation dan verifikasi
@@ -337,6 +355,26 @@ Reranker bersifat opsional saat runtime (flag config) supaya ablasi bisa dijalan
 - Prompt hanya berisi chunk hasil retrieval. Tidak ada pengetahuan luar, tidak ada instruksi "gunakan pengetahuanmu" (AGENTS.md §4.1).
 - Chunk di prompt diberi label `chunk_id` eksplisit agar model bisa merujuk tanpa mengarang.
 - Bila tidak ada chunk yang mendukung sebuah klaim, model diinstruksikan menandainya `unsupported: true` alih-alih mengisi sitasi asal.
+
+### Implementasi M5
+
+`generation.generate_answer` menerima pertanyaan dan hasil retrieval. Metadata store memeriksa ID, teks, paper, halaman, section, kualitas, serta status parsing terhadap SQLite; konteks yang berubah atau duplikat ditolak sebelum inference. Judul referensi selalu diambil dari database. `answer_question` menghubungkan retrieval M4 dengan generator; caller yang sudah memiliki chunk dapat memanggil `generate_answer` langsung. Context kosong menyelesaikan run dengan nol klaim tanpa panggilan LLM.
+
+Prompt terdiri atas instruksi grounding/format generik dan JSON pertanyaan/chunk kanonis. Tidak ada contoh fakta dari luar konteks. Instruksi di dalam pertanyaan/chunk diperlakukan sebagai data tak tepercaya. Output harus mengikuti format §6, tanpa field tambahan atau key JSON duplikat. Respons non-JSON, struktur tidak valid, Unicode tidak valid, atau finish reason selain `stop` memperoleh satu retry format. Retry memakai bukti yang sama, tanpa menambahkan klaim dari respons gagal ke prompt. Setelah dua kegagalan, run berstatus gagal dan tidak menyimpan klaim parsial.
+
+Parser sitasi tetap murni: caller memasok himpunan ID korpus dan konteks. Sintaks salah, ID hilang, dan ID di luar konteks dicatat terpisah lalu dibuang. Urutan sitasi valid dipertahankan setelah deduplikasi. Klaim tanpa sitasi valid dipertahankan dengan `unsupported=true`; flag unsupported dari LLM tidak dihapus meskipun ada ID valid. Renderer membuat nomor referensi dari ID kanonis, dengan judul, rentang halaman, section, dan kutipan asli. Teks/metadata di-escape untuk Markdown. Validitas ID belum menjadi bukti dukungan semantik; hasil masih berlabel "belum diverifikasi" sampai M6.
+
+Adapter mendukung provider DeepSeek dan OpenAI melalui SDK OpenAI yang sudah menjadi dependensi. Endpoint standar dipilih dari provider, atau `generation.base_url` berupa HTTPS tanpa credential/query/fragment. API key hanya dibaca dari environment sesuai provider. CLI memerlukan `--allow-api` untuk cache miss; tanpa flag itu tidak ada panggilan provider. SDK memakai timeout dan batas token output dari config, JSON object mode, serta `max_retries=0` agar retry transport tidak melewati `max_calls_per_run`. Rujukan: [DeepSeek JSON Output](https://api-docs.deepseek.com/guides/json_mode/) dan [OpenAI Chat Completions](https://developers.openai.com/api/reference/python/resources/chat/subresources/completions/methods/create).
+
+Cache `paths.cache_dir/llm/` memakai provider/endpoint, model, temperature, batas output, backend, dan seluruh prompt sebagai identitas. Namespace backend memisahkan mock dari provider nyata. Respons menyimpan model yang dilaporkan server, input/output tokens, finish reason, provenance, dan checksum. Cache rusak ditolak tanpa penghapusan/panggilan pengganti otomatis. Cache hit memakai nol jatah panggilan/token baru; usage asli tetap dicatat. Usage hilang atau invalid menyebabkan kegagalan dengan `unknown_usage_attempts`, bukan asumsi biaya nol. Total token pada laporan menjumlahkan usage baru yang diketahui, termasuk respons gagal format. Counter backend adalah jumlah attempt, termasuk mock/attempt yang gagal; bukan bukti tagihan provider.
+
+Metadata store membuat tabel `run`, `answer`, dan `claim` persis sesuai §4, tanpa mengubah tabel sumber atau format ID/sitasi. Nama kolom tabel hasil yang tidak cocok ditolak sebelum membuat tabel lain. Run/answer/claim ditulis secara append; internal `answer_id` memakai `<run_id>:a01` dan `claim_id` memakai `<answer_id>:c<ordinal>`. ID internal ini bukan ID sitasi. `answer.raw_response` menyimpan respons terakhir yang diterima pipeline; laporan/cache mempertahankan attempt sebelumnya. `run.notes` menyimpan status, statistik token/cache, kegagalan format, dan sitasi yang ditolak. Model embedding/reranker pada run BM25 dibiarkan NULL.
+
+Laporan `paths.index_dir/reports/generation-<run_id>.json` dipesan dengan mode create-exclusive sebelum inference. Laporan mencatat config/hash, seed, code version, context ID/hash, backend, versi SDK, attempt/usage, klaim, referensi, serta status verifikasi. Kegagalan penyimpanan diberi status gagal pada laporan. Run/report lama tidak ditimpa. Seed disimpan untuk penelusuran eksperimen; determinisme keluaran provider belum dijamin, sehingga pengulangan memakai cache respons.
+
+Provider/model live belum dipilih lewat uji biaya/latensi. Config awal `deepseek-chat` dipertahankan, sedangkan [dokumentasi DeepSeek yang diperiksa](https://api-docs.deepseek.com/api/create-chat-completion/) mencantumkan `deepseek-flash` dan `deepseek-v4-pro`. Alias config harus dikonfirmasi sebelum panggilan berbayar. Seluruh verifikasi M5 memakai LLM mock dan transport HTTP lokal, bukan layanan berbayar.
+
+### Verifikasi klaim (M6)
 
 Verifikasi dua lapis (default, sesuai OVERVIEW §3.1c):
 
@@ -392,6 +430,10 @@ Aturan pelaporan:
 Untuk kompatibilitas config M0/M1, bagian `parsing` dan field baru `chunking.short_chunk_policy`/`tokenizer` memakai default bila tidak diberikan. Nilai efektif tetap disimpan di laporan. Nilai eksplisit yang salah, termasuk `parsing: null`, tetap ditolak.
 
 Config sebelum M3 memakai default `embedding.revision: a5beb1e3e68b9ab74eb54cfd186867f64f240e1a` dan `max_tokens: 512`. Revision itu milik `BAAI/bge-base-en-v1.5`; mengganti model wajib menyertakan revision yang sesuai. Device menerima `cpu`, `cuda`, atau `cuda:<index>`, tanpa fallback CPU diam-diam.
+
+Config sebelum M4 memakai default `retrieval.query_prefix: 'Represent this sentence for searching relevant passages: '`, `reranker_revision: 2cfc18c9415c912f9d8155881c133215df768a70`, `reranker_max_tokens: 512`, dan `reranker_batch_size: 16`. Revision default milik `BAAI/bge-reranker-base`; mengganti reranker memerlukan revision model yang sesuai. Revision wajib commit SHA 40 karakter. Default M3 CPU dan lockfile CUDA tidak berubah.
+
+Config sebelum M5 memakai default `generation.max_output_tokens: 2048`, `timeout_seconds: 60.0`, dan `base_url: ''` (endpoint standar provider). Provider generation yang diimplementasikan adalah `deepseek` dan `openai`; nilai lain ditolak. `max_calls_per_run` tetap mencakup retry format. Konfigurasi tidak memuat API key dan `.env` tidak dimuat otomatis.
 
 ---
 

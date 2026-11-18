@@ -1,0 +1,5 @@
+{"qid":"synthetic-alpha","question":"Cafe alpha evidence","qtype":"lookup","gold_paper_ids":["arxiv:2401.12345v1"],"gold_chunk_ids":["arxiv:2401.12345v1:p1:c02","arxiv:2401.12345v1:p1:c06"]}
+{"qid":"synthetic-beta","question":"Beta evidence experiment","qtype":"lookup","gold_paper_ids":["arxiv:2401.12345v1"],"gold_chunk_ids":["arxiv:2401.12345v1:p1:c03"]}
+{"qid":"synthetic-comparison","question":"Compare alpha and beta","qtype":"comparison","gold_paper_ids":["arxiv:2401.12345v1"],"gold_chunk_ids":["arxiv:2401.12345v1:p1:c05"]}
+{"qid":"synthetic-gamma","question":"Gamma retrieval fusion","qtype":"synthesis","gold_paper_ids":["arxiv:2401.12345v1"],"gold_chunk_ids":["arxiv:2401.12345v1:p1:c04"]}
+{"qid":"synthetic-unanswerable","question":"Unrelated astronomy question","qtype":"unanswerable","gold_paper_ids":[],"gold_chunk_ids":[]}
