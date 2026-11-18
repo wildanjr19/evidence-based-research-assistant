@@ -1,0 +1,44 @@
+chunking:
+  target_tokens: 400
+  overlap_tokens: 50
+  min_tokens: 80
+
+embedding:
+  model: BAAI/bge-base-en-v1.5
+  batch_size: 32
+  device: cuda
+
+retrieval:
+  dense_top_k: 50
+  bm25_top_k: 50
+  rrf_k: 60
+  rerank_candidates: 50
+  final_top_k: 8
+  use_reranker: true
+  reranker_model: BAAI/bge-reranker-base
+
+generation:
+  provider: deepseek
+  model: deepseek-chat
+  temperature: 0.0
+  max_calls_per_run: 200
+
+verification:
+  minicheck_model: lytang/MiniCheck-Flan-T5-Large
+  judge_model: gpt-4o-mini
+  judge_provider: openai
+  judge_sample_rate: 0.25
+  seed: 42
+
+evaluation:
+  ks: [5, 10, 20]
+  dataset_path: eval/questions.jsonl
+  gold_labels_path: eval/gold_labels.jsonl
+  output_dir: eval/results
+
+paths:
+  raw_dir: data/raw
+  parsed_dir: data/parsed
+  index_dir: data/index
+  cache_dir: data/cache
+  db_path: data/index/corpus.db

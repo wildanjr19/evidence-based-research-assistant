@@ -1,0 +1,30 @@
+# Korpus, PDF, indeks, dan cache: jangan pernah di-commit (AGENTS.md §5)
+data/
+*.pdf
+*.pdf.txt
+
+# Secret
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+
+# Model cache
+.cache/
+models/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
