@@ -180,3 +180,122 @@ M5 membuat tabel `run`, `answer`, dan `claim` sesuai skema yang sudah ditetapkan
 Laporan baru di `paths.index_dir/reports/generation-<run_id>.json` memuat config/hash, seed, code version, konteks ID/hash, backend, respons setiap attempt, usage/token baru, cache hit, format failure, sitasi yang ditolak, klaim, referensi, dan status verifikasi. `answer.raw_response` menyimpan respons terakhir; respons sebelumnya tetap ada di laporan/cache. Run gagal juga disimpan, termasuk raw response yang gagal format. Output gagal memakai exit code 1. Tidak ada penggantian run/report lama.
 
 Test dan smoke test M5 memakai LLM mock, tanpa API berbayar. Pengukuran RAM/VRAM proses dengan embedding/reranker CPU nyata serta keterbatasannya dicatat di TASKS.md. Verifikasi semantik dan metrik sitasi baru dikerjakan pada M6.
+
+## Verifikasi dan evaluasi M6
+
+Gunakan Python `.venv` langsung untuk mempertahankan PyTorch CUDA yang dipasang
+manual. Implementasi verifier/evaluasi tersedia; gold set final, label manusia,
+dan benchmark lengkap M6 masih menunggu. Panduan draf dan anotasi ada di
+[eval/README.md](eval/README.md).
+
+Runner retrieval lama tetap menjadi default. Untuk retrieval, generation,
+verifikasi semantik, dan metrik sitasi dalam satu run:
+
+```powershell
+.venv/Scripts/python.exe -m rag.evaluation --stage citations --config data/m6-smoke/local-verifier-v1/config.yaml --mode hybrid+rerank
+```
+
+Contoh ini memakai pertanyaan yang respons DeepSeek-nya sudah tersedia di cache.
+Tanpa `--allow-api`, cache miss menjadi generation gagal, bukan panggilan API atau
+penolakan jawaban yang benar. `--with-judge` mengaktifkan sampel judge; flag tersebut
+tetap tidak mengizinkan request baru tanpa `--allow-api`. Jangan menjalankan batch
+berbayar sebelum dataset ditinjau dan batas request/biaya disetujui.
+
+`generation.max_calls_per_run` membatasi seluruh batch generation termasuk retry
+format dan semua mode yang dipilih. `verification.judge_max_calls_per_run`
+membatasi seluruh batch judge secara terpisah. Cache hit tidak memakai jatah
+panggilan/token baru. CLI mengembalikan exit code 1 untuk run incomplete/gagal.
+`--mode all` membuat laporan tiap mode dan berbagi kedua batas batch tersebut.
+
+MiniCheck memakai model Hugging Face yang sudah diverifikasi:
+`lytang/MiniCheck-Flan-T5-Large`, revision
+`96eafd01cee2d16cf81aaa2fb226b14f422a37b3`, metadata lisensi MIT.
+Adapter mengikuti [inference upstream](https://github.com/Liyan06/MiniCheck/blob/main/minicheck/inference.py)
+untuk format pasangan `predict: <evidence></s><claim>` dan probabilitas dua token
+label. Adapter ini memeriksa pasangan klaim/chunk utuh, tanpa segmentasi kalimat
+atau pemotongan. Input di atas `min(verification.max_tokens, model.n_positions)`
+ditandai belum terverifikasi. Batas default 512, batch 4, device CPU, threshold 0,5.
+Ini bukan benchmark pipeline segmentasi dokumen upstream. Penggunaan pertama
+mengunduh bobot sekitar 3,13 GB; tidak menambah dependensi atau mengubah lockfile.
+
+Cache verifier di `paths.cache_dir/verification/` memuat hash klaim/evidence,
+model/revision, adapter, device, panjang input, threshold, backend, dan checksum.
+Cache rusak ditolak tanpa dihapus. Hasil yang berhasil disimpan append-only di
+tabel `verification` sesuai skema arsitektur. Kegagalan verifier tercatat pada
+laporan dengan label `null`; jawaban dan klaim tetap tersimpan.
+
+Judge memakai provider standar dari keluarga berbeda: DeepSeek versus OpenAI.
+Endpoint kustom atau identitas keluarga yang tidak dikenali ditolak. Sampel
+dipilih pada klaim yang memiliki sitasi dengan seed dan kunci stabil qid/ordinal;
+semua pasangan tersitasi pada klaim terpilih dinilai. JSON judge wajib berisi
+label dan alasan. Hasil judge, model yang dilaporkan server, token/cache, dan
+agreement dilaporkan terpisah dari metrik MiniCheck. Judge nyata belum diuji.
+
+Laporan baru berada di `evaluation.output_dir/<run_id>/`, default `eval/results/`,
+berisi metrics, per-question, dan report. Run evaluasi serta run generation
+pertanyaan ditulis ke SQLite; laporan menghubungkan ID run masing-masing.
+Hash dataset/korpus/config, code version, versi model/library/backend, seed,
+jumlah dan tipe pertanyaan, waktu, token, dan memori proses dicatat. Teks sumber
+lengkap tetap di laporan generation/berkas anotasi dalam `data/`; laporan publik
+evaluasi tidak menyalin kutipan atau Markdown yang berisi chunk.
+
+Precision/recall sitasi dan faithfulness memakai label MiniCheck. Sitasi yang
+dibuang saat validasi, termasuk ID di luar konteks, masuk hallucinated citation
+rate; unitnya ID unik per klaim setelah deduplikasi M5. Klaim tanpa sitasi tetap
+masuk penyebut recall/faithfulness. Klaim berflag unsupported tidak dihitung
+sebagai klaim supported. Setiap klaim pada unanswerable dihitung gagal; penolakan
+yang benar memakai nol klaim (`{"claims": []}`). Generation gagal tidak dianggap
+abstention. Metrik dukungan agregat menjadi `null` bila ada generation gagal atau
+pasangan belum terverifikasi; jumlah kegagalan dan cakupan tetap ditampilkan.
+Penyebut nol dan kappa tanpa label manusia juga menghasilkan `null`.
+
+Untuk menghitung agreement pada 50–100 pasangan berlabel manusia tanpa memanggil
+generation/API, gunakan `--stage agreement --annotations <file.jsonl>` sesuai
+panduan anotasi. Label diimpor secara baca-saja; runner tidak mengisi label kosong
+atau memperbaiki gold set secara otomatis.
+
+## Pilot Jev melalui Surplus
+
+Adapter Jev tersedia sebagai judge keputusan opsional, memakai dependensi HTTP
+yang sudah terpasang. Isi tiga variabel di `.env` sesuai `.env.example`:
+`SURPLUS_API_KEY`, `SURPLUS_API_URL`, dan `JEV_MODEL_ID`. Environment diprioritaskan.
+Jangan menaruh key di YAML atau command. URL menerima
+`https://api.surplusintelligence.ai/v1` atau URL lengkap `/v1/decisions`.
+
+Untuk perbandingan kecil tanpa menjalankan generator:
+
+```powershell
+.venv/Scripts/python.exe -m rag.evaluation.decisions --config data/jev-smoke/surplus-jev-v1/config.yaml --pairs data/m6-smoke/local-verifier-v1/reference-annotations.jsonl --limit 12
+```
+
+Contoh memakai input dan cache dari eksperimen lokal yang tercatat di TASKS.md.
+Tanpa `--allow-api`, respons Jev hanya dibaca dari cache. Untuk request baru,
+tambahkan flag tersebut secara eksplisit; pengguna sudah mengizinkan pilot 12
+request pada sesi ini. Perluasan batch berbayar harus ditetapkan terpisah.
+Jumlah attempt dibatasi nilai terendah antara jumlah pasangan terpilih dan
+`verification.judge_max_calls_per_run`; request gagal tidak diulang otomatis.
+Runner berhenti pada error Jev pertama. Error MiniCheck, termasuk input melebihi
+512 token, tetap dicatat sebagai belum terverifikasi tanpa memotong bukti.
+
+Input JSONL memuat `claim`, `chunk_id`, dan `text_sha256`; field evidence opsional
+tidak digunakan untuk inference karena teks dibaca dari SQLite kanonis. Pasangan
+duplikat, hash berubah, atau chunk hilang ditolak sebelum request. `--limit`
+adalah batas pasangan, bukan jumlah pertanyaan generation. Seed mengikuti config.
+Selection, hash, model/endpoint/backend efektif, probabilitas, confidence, token,
+HTTP latency, peak RAM/VRAM, serta agreement tersedia pada run baru di
+`evaluation.output_dir`. Tidak ada teks chunk lengkap yang disalin ke `eval/`.
+
+Untuk mengaktifkan Jev pada sampel judge runner sitasi, gunakan salinan config
+lengkap dengan `verification.judge_provider: surplus`, lalu jalankan CLI
+`rag.evaluation --stage citations --with-judge`. Generator tetap mengikuti
+`generation`, termasuk cache dan batas generation tersendiri. `judge_model`
+diganti dengan nilai efektif `JEV_MODEL_ID` pada manifest. Model yang menjawab
+dicatat lengkap, misalnya `typesafe/jev-1.14-20261014` pada pilot ini. ID gateway
+yang diizinkan berbentuk versi Jev eksplisit; rolling alias ditolak.
+
+Jev mengembalikan keputusan dan distribusi probabilitas, tanpa penjelasan
+generatif. `rationale` disimpan null; field ini sudah nullable pada skema lama.
+Label `partially_supported` tetap berbeda dari supported. Metrik sitasi utama
+tetap dari MiniCheck; hasil Jev dan agreement dilaporkan terpisah. Angka agreement
+pilot bukan accuracy atau kappa terhadap manusia, dan bukan pengganti gold set.
+Detail kontrak ada di [dokumentasi Surplus](https://www.surplusintelligence.ai/docs/api-reference/decisions).

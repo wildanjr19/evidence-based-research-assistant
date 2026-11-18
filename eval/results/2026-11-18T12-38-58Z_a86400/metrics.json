@@ -1,0 +1,185 @@
+{
+  "run_id": "2026-11-18T12:38:58Z_a86400",
+  "stage": "human_pilot_revised_cached_comparison",
+  "status": "incomplete",
+  "status_reason": "Three partial labels require protocol review; MiniCheck lacks two predictions",
+  "source_run_id": "2026-11-18T11:50:46Z_ad072b",
+  "source_config_hash": "eb71dccb46aed5ca25665a5da31483532e15fce42c9f6a26b2588b57faf2aad4",
+  "source_config": {
+    "config": {
+      "ingestion": {
+        "query": "(ti:\"retrieval augmented generation\" OR ti:\"retrieval-augmented generation\" OR ti:RAG) AND (ti:evaluation OR ti:benchmark)",
+        "max_papers": 10,
+        "page_size": 10,
+        "request_delay_seconds": 3.0,
+        "timeout_seconds": 30.0,
+        "max_pdf_bytes": 52428800,
+        "allowed_licenses": [
+          "CC-BY-4.0",
+          "CC-BY-3.0",
+          "CC0-1.0"
+        ]
+      },
+      "parsing": {
+        "margin_ratio": 0.08,
+        "repeated_margin_ratio": 0.6,
+        "min_repeated_pages": 2,
+        "heading_max_words": 16
+      },
+      "chunking": {
+        "target_tokens": 400,
+        "overlap_tokens": 50,
+        "min_tokens": 80,
+        "short_chunk_policy": "merge",
+        "tokenizer": "lexical-v1"
+      },
+      "embedding": {
+        "model": "BAAI/bge-base-en-v1.5",
+        "batch_size": 32,
+        "device": "cpu",
+        "revision": "a5beb1e3e68b9ab74eb54cfd186867f64f240e1a",
+        "max_tokens": 512
+      },
+      "retrieval": {
+        "dense_top_k": 50,
+        "bm25_top_k": 50,
+        "rrf_k": 60,
+        "rerank_candidates": 50,
+        "final_top_k": 8,
+        "use_reranker": true,
+        "reranker_model": "BAAI/bge-reranker-base",
+        "query_prefix": "Represent this sentence for searching relevant passages: ",
+        "reranker_revision": "2cfc18c9415c912f9d8155881c133215df768a70",
+        "reranker_max_tokens": 512,
+        "reranker_batch_size": 16
+      },
+      "generation": {
+        "provider": "deepseek",
+        "model": "deepseek-flash",
+        "temperature": 0.0,
+        "max_calls_per_run": 2,
+        "max_output_tokens": 2048,
+        "timeout_seconds": 60.0,
+        "base_url": "",
+        "thinking": false
+      },
+      "verification": {
+        "minicheck_model": "lytang/MiniCheck-Flan-T5-Large",
+        "judge_model": "jev-1.14",
+        "judge_provider": "surplus",
+        "judge_sample_rate": 0.25,
+        "seed": 42,
+        "minicheck_revision": "96eafd01cee2d16cf81aaa2fb226b14f422a37b3",
+        "max_tokens": 512,
+        "batch_size": 4,
+        "device": "cpu",
+        "support_threshold": 0.5,
+        "judge_max_calls_per_run": 12,
+        "judge_base_url": "https://api.surplusintelligence.ai/v1/decisions"
+      },
+      "evaluation": {
+        "ks": [
+          5,
+          10,
+          20
+        ],
+        "dataset_path": "D:\\Wildan\\evidence-based-research-assistant\\data\\m6-smoke\\local-verifier-v1\\questions.jsonl",
+        "gold_labels_path": "eval/gold_labels.jsonl",
+        "output_dir": "eval/results"
+      },
+      "paths": {
+        "raw_dir": "data/raw",
+        "parsed_dir": "data/parsed",
+        "index_dir": "D:\\Wildan\\evidence-based-research-assistant\\data\\m6-smoke\\local-verifier-v1\\index",
+        "cache_dir": "data/cache",
+        "db_path": "D:\\Wildan\\evidence-based-research-assistant\\data\\m6-smoke\\local-verifier-v1\\corpus.db"
+      }
+    },
+    "limit": 12,
+    "pairs_path": "data\\m6-smoke\\local-verifier-v1\\reference-annotations.jsonl"
+  },
+  "source_code_version": "cb93f2c6276db4920e1d13bb118ac4bc68f90e52+dirty",
+  "seed": 42,
+  "confirmed_at": "2026-11-18T12:38:58.694872+00:00",
+  "manual_labels_sha256": "a5a9a44a23c9b634be69e09d4dcc10a8746fea3e1e0807933a3145dada5f12ab",
+  "manual_labels_path": "data\\jev-smoke\\surplus-jev-v1\\human-labels-v2.jsonl",
+  "annotation_count": 12,
+  "annotator_count": 1,
+  "manual_label_distribution": {
+    "supported": 5,
+    "partially_supported": 3,
+    "not_supported": 4
+  },
+  "review_mode": "model_disagreement_selected_individual_review",
+  "model_aggregate_results_previously_disclosed": true,
+  "eligible_for_final_gold": false,
+  "metrics": {
+    "jev": {
+      "evaluated_pairs": 12,
+      "unverified_pairs": 0,
+      "coverage": 1.0,
+      "matches": 8,
+      "disagreements": 4,
+      "exact_agreement": 0.6666666666666666,
+      "cohens_kappa": 0.48387096774193544,
+      "prediction_distribution": {
+        "supported": 4,
+        "not_supported": 7,
+        "partially_supported": 1
+      },
+      "model_versions": [
+        "typesafe/jev-1.14-20261014"
+      ]
+    },
+    "minicheck": {
+      "evaluated_pairs": 10,
+      "unverified_pairs": 2,
+      "coverage": 0.8333333333333334,
+      "matches": 7,
+      "disagreements": 3,
+      "exact_agreement": 0.7,
+      "cohens_kappa": 0.5238095238095237,
+      "prediction_distribution": {
+        "not_supported": 7,
+        "supported": 3
+      },
+      "model_versions": [
+        "lytang/MiniCheck-Flan-T5-Large@96eafd01cee2d16cf81aaa2fb226b14f422a37b3"
+      ]
+    }
+  },
+  "limitations": [
+    "Three partial rationales discuss response length or need for more context; the supported subset still needs clarification.",
+    "User labels and reasons are preserved exactly; no label was changed to match a model.",
+    "Review was selected from model disagreements after aggregate results were disclosed; agreement improvement is not independent validation.",
+    "One annotator, one paper, twelve draft-reference pairs; not the final generation benchmark or accepted gold set.",
+    "Two MiniCheck pairs remain unverified because existing inputs exceeded the token limit."
+  ],
+  "paid_api_calls": 0,
+  "new_model_inferences": 0,
+  "prediction_source": "Previously persisted immutable per-pair results; no model/cache backend invoked",
+  "input_hashes": {
+    "data\\jev-smoke\\surplus-jev-v1\\human-adjudication-v1.md": "ef176e1ceafe24d31ea2d0ce9cd19eb7e53c646630751248592a0403da9f77a8",
+    "data\\jev-smoke\\surplus-jev-v1\\human-labels-v1.jsonl": "a1fa7aa78964e1278728339b559c16307f3f8ebdb584caea01ccf5f6ebae6dc0",
+    "eval\\results\\2026-11-18T11-50-46Z_ad072b\\per_pair.jsonl": "1d6226a53c0801c06c42d8c1541a497115ddaefdac57b1a3c11879b378152b56",
+    "eval\\results\\2026-11-18T12-25-28Z_4cf0c3\\metrics.json": "8a56db4fe5a6a0f33bd6916ae7ace02e237241c2f4db844552dd38c1d5a34e79",
+    "D:\\Wildan\\evidence-based-research-assistant\\data\\m6-smoke\\local-verifier-v1\\corpus.db": "191eca500cd23df0492973eae2dbccbcbbfab95df8df4f890f98860f29366676"
+  },
+  "source_files_unchanged": true,
+  "resources": {
+    "peak_working_set_bytes": 27131904,
+    "peak_private_commit_bytes": 18305024,
+    "cuda_initialized": false,
+    "peak_torch_allocated_bytes": 0,
+    "peak_torch_reserved_bytes": 0,
+    "scope": "Current Python process lifetime; PyTorch allocator only for VRAM"
+  },
+  "previous_human_comparison_run": "2026-11-18T12:25:28Z_4cf0c3",
+  "reviewed_pair_count": 8,
+  "changed_label_count": 7,
+  "protocol_review_ids": [
+    "jev-pilot-row-02",
+    "jev-pilot-row-08",
+    "jev-pilot-row-18"
+  ]
+}

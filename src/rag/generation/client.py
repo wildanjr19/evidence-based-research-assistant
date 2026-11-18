@@ -167,7 +167,9 @@ class CachedLLM:
                 )
             )
             return response
-        if self.backend is None and not self.allow_api:
+        if (
+            self.backend is None or getattr(self.backend, "requires_api", False)
+        ) and not self.allow_api:
             raise LLMError(
                 "API calls are disabled; pass --allow-api explicitly to make a paid request"
             )

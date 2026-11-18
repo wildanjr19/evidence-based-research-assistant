@@ -56,6 +56,12 @@ verification:
   judge_provider: openai
   judge_sample_rate: 0.25
   seed: 42
+  minicheck_revision: 96eafd01cee2d16cf81aaa2fb226b14f422a37b3
+  max_tokens: 512
+  batch_size: 4
+  device: cpu
+  support_threshold: 0.5
+  judge_max_calls_per_run: 50
 
 evaluation:
   ks: [5, 10, 20]

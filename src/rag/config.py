@@ -84,6 +84,13 @@ class VerificationConfig:
     judge_provider: str
     judge_sample_rate: float
     seed: int
+    minicheck_revision: str = "96eafd01cee2d16cf81aaa2fb226b14f422a37b3"
+    max_tokens: int = 512
+    batch_size: int = 4
+    device: str = "cpu"
+    support_threshold: float = 0.5
+    judge_max_calls_per_run: int = 50
+    judge_base_url: str = ""
 
 
 @dataclass(frozen=True)
@@ -123,7 +130,11 @@ def _parse_value(value: object, expected: object, key: str) -> object:
     if (
         expected is str
         and isinstance(value, str)
-        and (value.strip() or key in {"retrieval.query_prefix", "generation.base_url"})
+        and (
+            value.strip()
+            or key
+            in {"retrieval.query_prefix", "generation.base_url", "verification.judge_base_url"}
+        )
     ):
         return value
     if expected is bool and type(value) is bool:
@@ -254,6 +265,16 @@ def load_config(path: str | Path = "configs/config.yaml") -> Config:
             )
     if not 0 <= config.verification.judge_sample_rate <= 1:
         raise ConfigError("verification.judge_sample_rate: must be between 0 and 1")
+    if not re.fullmatch(r"[0-9a-f]{40}", config.verification.minicheck_revision):
+        raise ConfigError("verification.minicheck_revision: must be a pinned commit SHA")
+    if not re.fullmatch(r"cpu|cuda(?::[0-9]+)?", config.verification.device):
+        raise ConfigError("verification.device: must be cpu, cuda, or cuda:<index>")
+    if not 0 < config.verification.support_threshold < 1:
+        raise ConfigError("verification.support_threshold: must be between 0 and 1 exclusive")
+    if config.verification.judge_provider not in {"deepseek", "openai", "surplus"}:
+        raise ConfigError("verification.judge_provider: must be deepseek, openai, or surplus")
+    if config.verification.judge_base_url and config.verification.judge_provider != "surplus":
+        raise ConfigError("verification.judge_base_url: supported only for Surplus decisions")
     if (
         config.retrieval.use_reranker
         and config.retrieval.final_top_k > config.retrieval.rerank_candidates

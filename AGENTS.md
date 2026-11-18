@@ -42,7 +42,7 @@ python -m uv run python -m rag.ingestion fetch --config configs/config.yaml
 
 Sudah diuji nyata dengan config terpisah yang membatasi satu kandidat. Default repo membatasi 10 kandidat; korpus final belum diunduh. Test tetap memakai fixture lokal.
 
-Runner evaluasi retrieval M4 sudah tersedia; evaluasi sitasi menunggu M6. Dataset final `eval/questions.jsonl` belum tersedia, sehingga evaluasi awal memerlukan `--dataset` yang gold ID-nya sesuai korpus. Perintah dan batas metrik ada di `USAGE.md`.
+Runner evaluasi retrieval M4 dan jalur sitasi M6 sudah tersedia. Dataset final `eval/questions.jsonl` belum tersedia, sehingga evaluasi awal memerlukan `--dataset` yang gold ID-nya sesuai korpus. Draf 30 pertanyaan dan panduan anotasi ada di `eval/README.md`; belum menjadi gold manual final. Perintah dan batas metrik ada di `USAGE.md`.
 
 Perintah M4 (indeks M3 harus sudah lengkap; penggunaan reranker pertama mengunduh bobot):
 
@@ -60,6 +60,10 @@ Perintah M5 (default hanya membaca cache LLM; cache miss tidak memanggil API):
 ```
 
 Panggilan LLM nyata memerlukan `--allow-api`, model yang tersedia, dan key provider di environment atau `.env` pada direktori kerja. Environment diprioritaskan; loader hanya membaca key provider terpilih dan tidak mengubah environment. Format `.env` ada di USAGE.md. Pengguna memilih `deepseek-flash`, dengan `generation.thinking: false`; mode thinking termasuk identitas cache. M5 diuji dengan mock/transport HTTP lokal. Uji API nyata setelah penutupan M5 berhasil pada satu pertanyaan (satu request); pengulangan memakai cache tanpa request baru. Test otomatis tetap tanpa API berbayar. Smoke test memakai salinan database/index, retrieval CPU nyata, dan cache respons. Tabel `run`/`answer`/`claim` mengikuti skema ARCHITECTURE.md; tabel sumber tetap. Detail RAM/VRAM serta handoff ada di TASKS.md bagian M5.
+
+M6 masih berjalan. `--stage citations` pada `rag.evaluation` menjalankan generation dan MiniCheck lokal; default tetap tanpa API baru. Batas generation/judge berlaku untuk seluruh batch. `--stage agreement --annotations <file>` menghitung agreement terhadap label manusia tanpa generation/API. MiniCheck nyata sudah diuji di CPU pada empat klaim DeepSeek dari cache M5; pengulangan memakai cache verifier. Bahan 52 pasangan anotasi belum berlabel. Pilot Jev opsional melalui Surplus sudah menjawab 12 pasangan; 10 pasangan cocok dengan MiniCheck, dua tidak dapat diperiksa MiniCheck karena batas token. Ini agreement antar-model, bukan accuracy manusia. Judge generatif OpenAI dan benchmark final belum dijalankan. RAM/VRAM dan handoff ada di TASKS.md bagian M6. Jangan menyatakan M6 selesai sebelum gold final, judge sampel, dan 50–100 label manusia tersedia.
+
+Jev membaca `SURPLUS_API_KEY`, `SURPLUS_API_URL`, dan `JEV_MODEL_ID` dari environment atau `.env`. Pengguna memilih `jev-1.14` pada pilot ini; jangan mengubahnya diam-diam ke 1.13 atau rolling alias. `python -m rag.evaluation.decisions --config <config> --pairs <file> --limit 12` membandingkan Jev/MiniCheck tanpa generation. Cache miss memerlukan `--allow-api`, batas batch keras, tanpa retry otomatis; tetap gunakan Python `.venv` langsung. Tidak ada dependensi baru atau perubahan skema/sitasi.
 
 Perintah M2 (lokal, memakai corpus hasil M1):
 

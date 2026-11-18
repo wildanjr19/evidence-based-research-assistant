@@ -39,6 +39,8 @@ def generate_answer(
     backend: LLMBackend | None = None,
     allow_api: bool = False,
     mode: str | None = None,
+    *,
+    client: CachedLLM | None = None,
 ) -> dict:
     if not isinstance(question, str) or not question.strip():
         raise ValueError("Question must be a non-empty string")
@@ -74,7 +76,10 @@ def generate_answer(
         "format_failures": [],
         "verification_status": "not_run",
     }
-    llm = CachedLLM(config, backend, allow_api)
+    if client is not None and client.config != config:
+        raise ValueError("Shared LLM client must use the same configuration")
+    llm = client if client is not None else CachedLLM(config, backend, allow_api)
+    calls_before, attempts_before = llm.calls, len(llm.attempts)
     report["backend"] = llm.backend_name
     raw_response = None
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -121,15 +126,16 @@ def generate_answer(
         finally:
             report["finished_at"] = datetime.now(UTC).isoformat()
             report["elapsed_seconds"] = time.perf_counter() - started
-            report["attempts"] = llm.attempts
-            report["backend_calls"] = llm.calls
-            report["cache_hits"] = sum(a["cache_hit"] for a in llm.attempts)
+            attempts = llm.attempts[attempts_before:]
+            report["attempts"] = attempts
+            report["backend_calls"] = llm.calls - calls_before
+            report["cache_hits"] = sum(a["cache_hit"] for a in attempts)
             for key in ("input_tokens", "output_tokens"):
-                report[key] = sum(a.get("billed_" + key) or 0 for a in llm.attempts)
+                report[key] = sum(a.get("billed_" + key) or 0 for a in attempts)
             report["unknown_usage_attempts"] = sum(
                 not a["cache_hit"]
                 and (a.get("billed_input_tokens") is None or a.get("billed_output_tokens") is None)
-                for a in llm.attempts
+                for a in attempts
             )
             report["hallucinated_citation_count"] = sum(
                 event["reason"] in {"invalid_id", "not_in_corpus"}

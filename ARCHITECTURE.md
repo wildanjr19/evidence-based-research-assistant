@@ -384,6 +384,95 @@ Verifikasi dua lapis (default, sesuai OVERVIEW §3.1c):
 
 Pemilihan sampel memakai seed dari manifest run agar reproducible.
 
+### Implementasi awal M6
+
+`verification.MiniCheck` melalui modul `verification.minicheck` memakai dependensi
+Transformers/PyTorch yang sudah ada. ID model diverifikasi melalui API Hugging
+Face pada 2026-11-18: `lytang/MiniCheck-Flan-T5-Large`, revision
+`96eafd01cee2d16cf81aaa2fb226b14f422a37b3`, metadata lisensi MIT. Format input dan
+softmax token label mengikuti kode upstream. Adapter v1 menilai pasangan utuh,
+tanpa segmentasi kalimat atau truncation. Input melampaui batas config/model
+ditolak sebagai belum terverifikasi. Cache mencakup identitas backend/model,
+revision, kebijakan input, device, threshold, dan hash kedua teks; checksum serta
+provenance diperiksa saat membaca.
+
+`verification.pipeline.verify_answer` memeriksa klaim terhadap generation yang
+tersimpan, membaca bukti kanonis dari SQLite, lalu menambah baris pada tabel
+`verification` persis sesuai §4. Tabel dengan kolom berbeda ditolak; hasil lama
+tidak diganti. Gagal inference dicatat di laporan dengan label null, tanpa
+menulis label semantik palsu ke tabel atau menghilangkan klaim.
+
+`evaluation.citations.evaluate_citations` menghubungkan ranking M4, konteks
+`final_top_k`, generation M5, verifier, sampel judge opsional, dan metrik §9.
+Client generation dibagi antar pertanyaan/mode agar batas request mencakup
+seluruh batch; judge mempunyai batas batch terpisah. Sampel memakai kunci
+qid/ordinal dan seed agar tidak bergantung pada ID run acak. Keluarga judge dan
+generator harus berbeda pada endpoint provider standar. Label judge serta
+agreement dilaporkan terpisah dari metrik utama MiniCheck.
+
+Metrik dihitung dengan penyebut eksplisit: pasangan tersitasi, semua klaim
+termasuk unsupported, dan ID unik per klaim setelah deduplikasi M5. Semua ID
+yang ditolak validasi dihitung pada hallucinated citation rate. Klaim pada
+unanswerable tidak mendapat kredit dukungan; generation gagal tidak mendapat
+kredit abstention. Metrik dukungan agregat null bila generation gagal atau
+verifikasi tidak lengkap; jumlah kegagalan/cakupan tetap dilaporkan. Penyebut
+nol menghasilkan null. Aturan ini mencegah kegagalan terlihat sebagai skor baik.
+
+Laporan mencatat hash dataset/korpus/config, versi model/backend/library, seed,
+tipe/jumlah pertanyaan, ranking, klaim/ID sumber, usage, statistik cache, dan
+peak RAM/VRAM proses. Kutipan penuh tidak ditulis ke hasil evaluasi di `eval/`;
+pasangan untuk anotasi diekspor ke `data/annotations/` tanpa label atau prediksi
+verifier. Label manusia dicocokkan berdasarkan hash klaim, chunk ID, dan hash
+teks sumber. `evaluation.agreement` menilai file berlabel manusia secara lokal
+dan menghitung Cohen's kappa tanpa bobot pada tiga kelas; label parsial tetap
+kelas berbeda dari dua kelas keluaran MiniCheck. Belum ada label manusia nyata.
+
+Draf 30 pertanyaan satu paper di `eval/questions.draft-v1.jsonl` belum menjadi
+gold set manual final. Rincian provenance, bahan anotasi, dan batas cakupan ada
+di `eval/README.md`; verifikasi/handoff ada di TASKS.md. Tidak ada perubahan
+skema SQLite, format sitasi, dataset final, atau konfigurasi sumber CUDA.
+
+### Jev decision judge opsional (pilot M6)
+
+Pengguna mengizinkan eksperimen Jev melalui Surplus pada 2026-11-18.
+`verification.jev.JevJudge` menilai pasangan yang sama dengan tiga pilihan label
+dukungan melalui native `POST /v1/decisions`. Format `state` dan map `questions`
+mengikuti [kontrak Surplus](https://www.surplusintelligence.ai/docs/api-reference/decisions).
+Adapter membaca `SURPLUS_API_KEY`, `SURPLUS_API_URL`, dan `JEV_MODEL_ID` melalui
+loader environment/`.env` yang sudah ada, tanpa mengeksekusi nilai atau mencetak
+key. Endpoint dibatasi ke HTTPS Surplus `/v1` atau `/v1/decisions`, tanpa
+credential/query/fragment; redirect dan retry otomatis dinonaktifkan.
+
+`verification.judge_provider: surplus` mengaktifkannya pada runner sitasi.
+Model dari `JEV_MODEL_ID` serta endpoint efektif dicatat dalam config/hash run.
+ID alias rolling ditolak; model yang dilaporkan server harus berasal dari versi
+Jev yang diminta. Full resolved model, probabilitas tiap label, confidence, usage,
+dan HTTP latency dipertahankan. Confidence adalah keluaran model, belum ambang
+yang dikalibrasi terhadap gold lokal. Generator harus keluarga berbeda yang
+dikenali; default generator DeepSeek tidak berubah.
+
+Berbeda dari judge generatif default, Jev tidak menulis alasan naratif. Ekstensi
+pilot ini memakai `rationale=NULL` dan score probabilitas supported, sesuai kolom
+nullable yang sudah ada; tidak mengarang alasan atau mengubah skema. Baris SQL
+tetap `verifier=llm_judge`; laporan memberi `judge_kind=decision`. Primary metrics
+MiniCheck dan kebutuhan 50–100 label manusia tetap mengikuti protokol M6.
+
+Request/response Jev memakai cache M5 dengan identitas backend, endpoint, model,
+dan payload native lengkap. Backend jaringan bertanda `requires_api` sehingga
+tetap memerlukan `--allow-api`, meskipun diinjeksikan ke client cache. Seluruh
+batch tunduk pada `judge_max_calls_per_run`. Mock memakai namespace berbeda.
+Probabilitas harus finite, lengkap untuk tiga label, berjumlah satu, dan cocok
+dengan pilihan pemenang. Refusal, model lain, respons rusak, atau usage hilang
+tidak dijadikan label valid. Gagal tidak memicu request pengganti otomatis.
+
+`python -m rag.evaluation.decisions` menjalankan perbandingan pilot yang membaca
+SQLite tanpa menulisnya, seperti evaluasi retrieval M4. Input pasangan dicek
+terhadap hash chunk kanonis, sampel dibekukan dengan seed sebelum inference,
+dan laporan ditulis pada direktori run baru. Label kandidat/label manusia tidak
+dipakai sebagai target atau diubah. Agreement dihitung hanya pada pasangan yang
+berhasil diperiksa kedua model, dengan coverage dan kegagalan tetap dilaporkan.
+`accuracy_against_human_gold` tetap null bila tidak ada evaluasi manusia.
+
 ---
 
 ## 9. Protokol evaluasi

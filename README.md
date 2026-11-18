@@ -24,7 +24,15 @@ Stack utama: Python, PyMuPDF, BGE, LanceDB, dan SQLite FTS5. UI direncanakan mem
 
 **M0 sampai M5 sudah diimplementasikan:** ingestion, parsing, chunking, indexing, retrieval dengan reranker opsional, evaluasi retrieval, serta generasi JSON klaim dengan validasi sitasi dan cache respons.
 
-Retrieval dengan embedding/reranker nyata diuji pada satu paper di CPU; generasi diuji dengan LLM mock dan satu pertanyaan melalui DeepSeek Flash API nyata. Verifikasi dukungan klaim, evaluasi sitasi, UI, korpus final, dan dataset evaluasi final belum tersedia. Hasil verifikasi ada di [TASKS.md](TASKS.md).
+Retrieval dengan embedding/reranker nyata diuji pada satu paper di CPU; generasi diuji dengan LLM mock dan satu pertanyaan melalui DeepSeek Flash API nyata. M6 sedang berjalan: MiniCheck lokal dan runner evaluasi sitasi tersedia, termasuk eksperimen judge keputusan Jev melalui Surplus. UI, korpus final, gold set manual, dan benchmark lengkap belum tersedia. Hasil verifikasi ada di [TASKS.md](TASKS.md).
+
+Pilot [Jev dibandingkan dengan MiniCheck](eval/results/2026-11-18T11-50-46Z_ad072b/report.md)
+memeriksa 12 pasangan kandidat klaim–chunk dari satu paper. Jev menjawab seluruh
+pasangan; MiniCheck memeriksa 10 dan menolak dua input yang melewati batas token.
+Keduanya sepakat pada 10 pasangan yang dapat dibandingkan. Laporan menyimpan
+probabilitas, confidence, identitas model, token, latensi, dan kegagalan secara
+terpisah. Hasil ini adalah agreement antar-model, belum akurasi terhadap manusia
+atau bukti bahwa salah satu verifier lebih unggul.
 
 ## Mulai dan dokumentasi
 
