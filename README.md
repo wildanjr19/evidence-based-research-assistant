@@ -2,7 +2,7 @@
 
 Sistem RAG lokal untuk literatur ilmiah: setiap klaim dalam jawaban menunjuk ke chunk sumber (paper, halaman, kutipan), dan ketepatan sitasinya diukur, bukan diklaim.
 
-Status: **fondasi M0 diimplementasikan**: loader config bertipe dan utilitas ID beserta test unit. Pipeline ingestion, retrieval, generation, dan evaluasi belum tersedia. Belum ada angka evaluasi.
+Status: **M0 dan M1 diimplementasikan**: fondasi config/ID, discovery arXiv dengan pemeriksaan lisensi, unduhan PDF, dan metadata SQLite. Parsing, retrieval, generation, dan evaluasi belum tersedia. Belum ada angka evaluasi.
 
 ## Dokumentasi
 
@@ -53,11 +53,32 @@ Jalankan kode melalui `python -m uv run python` agar package tersedia. Loader me
 
 Validator ID memeriksa sintaks, versi arXiv, dan batas halaman/ordinal. Keberadaan chunk di database dan keanggotaannya dalam konteks retrieval harus diperiksa saat M5. Run ID memakai waktu UTC dan sufiks acak; penulisan hasil tanpa menimpa run lama diimplementasikan bersama evaluasi.
 
-Verifikasi M0 pada Python 3.11.0 / Windows: sinkronisasi dari environment baru dan `uv sync --locked` berhasil, 93 test lulus (juga dengan marker `not gpu`), lint serta format bersih. Pola pengabaian data, secret, dan cache diperiksa dengan `git check-ignore`; belum ada pipeline untuk dijalankan.
+Verifikasi M0 pada Python 3.11.0 / Windows: sinkronisasi dari environment baru dan `uv sync --locked` berhasil, 93 test lulus (juga dengan marker `not gpu`), lint serta format bersih. Pola pengabaian data, secret, dan cache diperiksa dengan `git check-ignore`; pada tahap M0 pipeline belum tersedia.
 
 ## Data dan lisensi
 
 Hanya paper open access. PDF, teks penuh, dan indeks tidak disimpan di repo; yang disimpan hanya ID/URL, metadata lisensi, dan skrip unduh.
+
+## Ingestion M1
+
+Atur bagian `ingestion` di `configs/config.yaml`, lalu jalankan tahap-tahap ini secara berurutan:
+
+```bash
+python -m uv run python -m rag.ingestion discover --config configs/config.yaml
+python -m uv run python -m rag.ingestion fetch --config configs/config.yaml
+```
+
+`discover` mencari metadata lewat Atom API dan memeriksa lisensi lewat OAI-PMH `arXivRaw`, lalu menyimpan kandidat yang diterima ke `data/raw/candidates.jsonl`. `max_papers` membatasi jumlah hasil pencarian yang diperiksa, termasuk kandidat yang ditolak; jumlah paper diterima bisa lebih kecil. Default 10 kandidat ditujukan untuk uji awal, bukan korpus final 100–500 paper.
+
+Default lisensi yang diterima: `CC-BY-4.0`, `CC-BY-3.0`, dan `CC0-1.0`. Lisensi hilang/tidak dikenal/di luar daftar ditolak dengan alasan di log. OAI-PMH hanya memberikan metadata versi terbaru, sehingga versi hasil pencarian wajib sama dengan versi terbaru pada riwayat OAI; sistem tidak menebak versi atau menerapkan lisensi terbaru pada versi lama. Referensi: [metadata OAI-PMH arXiv](https://info.arxiv.org/help/oa/index.html) dan [lisensi per versi](https://info.arxiv.org/help/license/index.html).
+
+Request berlangsung satu per satu dengan jeda minimal 3 detik, sesuai [ketentuan API arXiv](https://info.arxiv.org/help/api/tou.html). Respons metadata di-cache per hari UTC di `data/cache/arxiv/`. Jangan menjalankan beberapa proses ingestion bersamaan. Timeout, batas ukuran PDF, dan jeda request tersedia di config; tidak ada retry otomatis untuk respons HTTP gagal.
+
+`fetch` hanya mengunduh kandidat berlisensi yang diizinkan config, memeriksa header PDF serta ukuran maksimum, lalu menghitung SHA-256 dan menyimpan metadata ke tabel `paper` pada `data/index/corpus.db`. Hash tidak pernah diisi dengan placeholder. Nama file memakai `arxiv_<source_id>.pdf`, dengan `/` pada ID lama diganti `_` agar aman di Windows; ID kanonis di database tetap memakai format arsitektur.
+
+Pengulangan memakai PDF lokal dan mempertahankan baris SQLite serta `parse_status`. Bila hash berbeda untuk versi paper yang sama, proses gagal tanpa memperbarui metadata atau menimpa file lama. Pemeriksaan struktur PDF lengkap ditunda ke parsing M2; M1 baru memeriksa header `%PDF-`.
+
+Verifikasi M1 pada 2026-11-18: 130 test lulus (semua memakai respons lokal untuk ingestion), lint serta format bersih. Uji nyata dibatasi satu kandidat pada query domain v1: `arxiv:2605.14488v1` diterima dengan lisensi `CC-BY-4.0`, PDF terunduh dan metadata tersimpan. Artefak uji berada di `data/m1-smoke/`, diabaikan Git. Ini belum membuktikan kualitas seleksi atau cakupan korpus final.
 
 ## Hasil evaluasi
 

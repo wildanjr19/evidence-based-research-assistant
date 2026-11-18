@@ -52,7 +52,7 @@ Setiap tahap adalah perintah terpisah yang idempoten dan bisa dijalankan ulang p
 | # | Tahap | Input | Output | Artefak |
 |---|---|---|---|---|
 | 1 | Discover | query/kategori domain, batas jumlah | metadata kandidat + status open access + lisensi | `data/raw/candidates.jsonl` |
-| 2 | Fetch | ID kandidat | PDF + `sha256` | `data/raw/pdf/<paper_id>.pdf` |
+| 2 | Fetch | ID kandidat | PDF + `sha256` + metadata SQLite | `data/raw/pdf/<safe_paper_id>.pdf` |
 | 3 | Parse | PDF | teks per halaman, section, referensi | `data/parsed/<paper_id>.json` |
 | 4 | Chunk | teks terparse | chunk + halaman + section | tabel `chunk` |
 | 5 | Index | chunk | vektor + indeks BM25 | `data/index/vectors.lance`, tabel FTS5 |
@@ -62,6 +62,10 @@ Setiap tahap adalah perintah terpisah yang idempoten dan bisa dijalankan ulang p
 | 9 | Evaluate | gold set + output | metrik per run | `eval/results/<run_id>/` |
 
 Tahap 2–5 bersifat *build once*: dijalankan untuk seluruh korpus, lalu diulang hanya untuk paper baru. Tahap 6–8 per pertanyaan. Tahap 9 memerlukan tahap 6–8 untuk seluruh pertanyaan uji.
+
+Implementasi M1 mempertahankan `paper.pdf_sha256 NOT NULL`: Discover menyimpan kandidat berlisensi ke JSONL; Fetch memasukkan metadata ke tabel `paper` hanya setelah PDF tersedia dan hash nyata dihitung. `safe_paper_id` adalah nama file, bukan ID baru: `arxiv:2401.12345v1` menjadi `arxiv_2401.12345v1`, dan `/` pada source ID lama diganti `_` karena batas nama file Windows. Format ID/sitasi dan skema SQLite tidak berubah.
+
+Pencarian memakai Atom API arXiv; lisensi diperiksa melalui OAI-PMH `arXivRaw` dari sumber arXiv yang sama. Karena OAI mengekspos metadata versi terbaru, nomor versi kandidat wajib cocok dengan versi terbaru dalam riwayat OAI sebelum lisensinya dipakai. Kandidat tanpa lisensi yang dikenali dan diizinkan config ditolak dengan log alasan. Metadata di-cache per hari UTC, request serial dengan jeda minimal 3 detik. Batas `ingestion.max_papers` menghitung hasil pencarian yang diperiksa, bukan hanya paper yang lolos. Referensi protokol: [OAI-PMH](https://info.arxiv.org/help/oa/index.html), [lisensi](https://info.arxiv.org/help/license/index.html), [ketentuan API](https://info.arxiv.org/help/api/tou.html).
 
 Pemisahan penting: **parsing dan chunking tidak boleh dipanggil saat query time.** Kalau terjadi, latensi dan biaya tidak terkontrol.
 
@@ -360,7 +364,7 @@ Aturan pelaporan:
 
 `configs/config.yaml` memuat seluruh knob. Kunci wajib (lihat file untuk nilai default):
 
-`chunking` (target_tokens, overlap_tokens, min_tokens), `embedding` (model, batch_size, device), `retrieval` (dense_top_k, bm25_top_k, rrf_k, rerank_candidates, final_top_k, use_reranker), `generation` (model, temperature, max_calls_per_run), `verification` (minicheck_model, judge_model, judge_sample_rate, seed), `evaluation` (ks, dataset_path).
+`ingestion` (query, max_papers, page_size, request_delay_seconds, timeout_seconds, max_pdf_bytes, allowed_licenses), `chunking` (target_tokens, overlap_tokens, min_tokens), `embedding` (model, batch_size, device), `retrieval` (dense_top_k, bm25_top_k, rrf_k, rerank_candidates, final_top_k, use_reranker), `generation` (model, temperature, max_calls_per_run), `verification` (minicheck_model, judge_model, judge_sample_rate, seed), `evaluation` (ks, dataset_path).
 
 ---
 

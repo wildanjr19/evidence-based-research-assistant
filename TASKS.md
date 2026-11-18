@@ -32,10 +32,14 @@ Catatan: `torch` dari PyPI di Windows terpasang sebagai build CPU. Konfigurasi `
 
 **Acceptance criteria:**
 
-- [ ] Bisa mengunduh metadata N paper untuk satu query domain, dengan batas jumlah dari config.
-- [ ] Setiap paper punya `license` terisi; paper tanpa lisensi jelas ditolak dengan log alasan.
-- [ ] Penulisan ulang paper yang sama bersifat idempoten.
-- [ ] Test memakai fixture respons API, tanpa jaringan.
+- [x] Bisa mengunduh metadata N paper untuk satu query domain, dengan batas jumlah dari config.
+- [x] Setiap paper punya `license` terisi; paper tanpa lisensi jelas ditolak dengan log alasan.
+- [x] Penulisan ulang paper yang sama bersifat idempoten.
+- [x] Test memakai fixture respons API, tanpa jaringan.
+
+**Verifikasi M1 (2026-11-18):** 130 test lulus pada jalur penuh dan `not gpu`; Ruff lint/format bersih. Fixture mencakup pagination, penolakan lisensi, ketidakcocokan versi, cache/jeda request, HTTP gagal, ukuran/header PDF, validasi kandidat, hash, dan idempotensi. Uji nyata satu kandidat pada query domain v1 berhasil melalui Discover + Fetch: `arxiv:2605.14488v1`, `CC-BY-4.0`. Data lokal berada di `data/m1-smoke/` dan diabaikan Git; korpus final belum dikumpulkan.
+
+Karena skema mewajibkan hash PDF, metadata masuk JSONL dahulu dan baru disimpan ke `paper` setelah Fetch. Tidak ada perubahan skema. `max_papers` membatasi kandidat yang diperiksa, termasuk yang ditolak. Perintah CLI dan batas perilaku ada di README.
 
 ---
 

@@ -30,6 +30,15 @@ python -m uv run ruff format --check .             # format
 
 Di mesin pengembangan Windows, launcher `pytest.exe` diblokir Application Control; pemanggilan melalui `python -m pytest` sudah diverifikasi.
 
+Perintah M1 (melakukan request arXiv; jalankan berurutan):
+
+```bash
+python -m uv run python -m rag.ingestion discover --config configs/config.yaml
+python -m uv run python -m rag.ingestion fetch --config configs/config.yaml
+```
+
+Sudah diuji nyata dengan config terpisah yang membatasi satu kandidat. Default repo membatasi 10 kandidat; korpus final belum diunduh. Test tetap memakai fixture lokal.
+
 TODO M6: implementasikan dan verifikasi perintah evaluasi retrieval/sitasi. Runner evaluasi belum tersedia; lokasi config adalah `configs/config.yaml`.
 
 Jalankan test dan lint setelah setiap perubahan kode, sebelum menyatakan tugas selesai.

@@ -27,11 +27,21 @@ def test_load_repository_config() -> None:
     assert config.verification.seed == 42
     assert config.evaluation.ks == [5, 10, 20]
     assert config.paths.db_path == "data/index/corpus.db"
+    assert config.ingestion.max_papers == 10
 
 
 @pytest.mark.parametrize(
     "section",
-    ["chunking", "embedding", "retrieval", "generation", "verification", "evaluation", "paths"],
+    [
+        "ingestion",
+        "chunking",
+        "embedding",
+        "retrieval",
+        "generation",
+        "verification",
+        "evaluation",
+        "paths",
+    ],
 )
 def test_missing_section_is_clear(config_data: dict, tmp_path: Path, section: str) -> None:
     del config_data[section]
@@ -48,6 +58,13 @@ def test_missing_key_is_clear(config_data: dict, tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("section", "key", "value"),
     [
+        ("ingestion", "max_papers", 0),
+        ("ingestion", "page_size", 0),
+        ("ingestion", "request_delay_seconds", 2.9),
+        ("ingestion", "timeout_seconds", 0),
+        ("ingestion", "max_pdf_bytes", -1),
+        ("ingestion", "allowed_licenses", []),
+        ("ingestion", "allowed_licenses", ["CC-BY-4.0", 5]),
         ("chunking", "target_tokens", True),
         ("chunking", "target_tokens", "400"),
         ("chunking", "target_tokens", 0),

@@ -13,6 +13,17 @@ class ConfigError(ValueError):
 
 
 @dataclass(frozen=True)
+class IngestionConfig:
+    query: str
+    max_papers: int
+    page_size: int
+    request_delay_seconds: float
+    timeout_seconds: float
+    max_pdf_bytes: int
+    allowed_licenses: list[str]
+
+
+@dataclass(frozen=True)
 class ChunkingConfig:
     target_tokens: int
     overlap_tokens: int
@@ -73,6 +84,7 @@ class PathsConfig:
 
 @dataclass(frozen=True)
 class Config:
+    ingestion: IngestionConfig
     chunking: ChunkingConfig
     embedding: EmbeddingConfig
     retrieval: RetrievalConfig
@@ -104,6 +116,13 @@ def _parse_value(value: object, expected: object, key: str) -> object:
         and isinstance(value, list)
         and value
         and all(type(item) is int and item > 0 for item in value)
+    ):
+        return value
+    if (
+        expected == list[str]
+        and isinstance(value, list)
+        and value
+        and all(isinstance(item, str) and item.strip() for item in value)
     ):
         return value
     raise ConfigError(f"{key}: expected {expected}, with a non-empty, finite value")
@@ -146,6 +165,7 @@ def load_config(path: str | Path = "configs/config.yaml") -> Config:
         raise ConfigError(f"Unknown configuration sections: {', '.join(sorted(map(str, unknown)))}")
 
     config = Config(
+        ingestion=_section(raw, "ingestion", IngestionConfig),
         chunking=_section(raw, "chunking", ChunkingConfig),
         embedding=_section(raw, "embedding", EmbeddingConfig),
         retrieval=_section(raw, "retrieval", RetrievalConfig),
@@ -154,6 +174,10 @@ def load_config(path: str | Path = "configs/config.yaml") -> Config:
         evaluation=_section(raw, "evaluation", EvaluationConfig),
         paths=_section(raw, "paths", PathsConfig),
     )
+    if config.ingestion.request_delay_seconds < 3:
+        raise ConfigError("ingestion.request_delay_seconds: must be >= 3 (arXiv rate limit)")
+    if config.ingestion.timeout_seconds <= 0:
+        raise ConfigError("ingestion.timeout_seconds: must be > 0")
     if config.chunking.overlap_tokens >= config.chunking.target_tokens:
         raise ConfigError("chunking.overlap_tokens: must be < chunking.target_tokens")
     if config.chunking.min_tokens > config.chunking.target_tokens:

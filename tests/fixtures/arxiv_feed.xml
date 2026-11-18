@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/"
+      xmlns:arxiv="http://arxiv.org/schemas/atom">
+  <opensearch:totalResults>1</opensearch:totalResults>
+  <entry>
+    <id>http://arxiv.org/abs/2401.12345v1</id>
+    <title>Synthetic RAG
+      evaluation fixture</title>
+    <published>2024-01-23T10:00:00Z</published>
+    <author><name>Fixture Author</name></author>
+    <arxiv:doi>10.0000/synthetic-fixture</arxiv:doi>
+    <arxiv:journal_ref>Synthetic test venue</arxiv:journal_ref>
+  </entry>
+</feed>

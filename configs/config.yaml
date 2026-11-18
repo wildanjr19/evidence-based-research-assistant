@@ -1,3 +1,12 @@
+ingestion:
+  query: '(ti:"retrieval augmented generation" OR ti:"retrieval-augmented generation" OR ti:RAG) AND (ti:evaluation OR ti:benchmark)'
+  max_papers: 10
+  page_size: 10
+  request_delay_seconds: 3.0
+  timeout_seconds: 30.0
+  max_pdf_bytes: 52428800
+  allowed_licenses: [CC-BY-4.0, CC-BY-3.0, CC0-1.0]
+
 chunking:
   target_tokens: 400
   overlap_tokens: 50
