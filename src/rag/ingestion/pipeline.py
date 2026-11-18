@@ -8,7 +8,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from rag.config import Config
-from rag.ingestion.arxiv import ArxivClient, Paper, atomic_write
+from rag.files import atomic_write
+from rag.ingestion.arxiv import ArxivClient, Paper
 from rag.ingestion.store import PAPER_SCHEMA, save_paper
 
 logger = logging.getLogger(__name__)

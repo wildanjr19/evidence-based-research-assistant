@@ -7,10 +7,18 @@ ingestion:
   max_pdf_bytes: 52428800
   allowed_licenses: [CC-BY-4.0, CC-BY-3.0, CC0-1.0]
 
+parsing:
+  margin_ratio: 0.08
+  repeated_margin_ratio: 0.6
+  min_repeated_pages: 2
+  heading_max_words: 16
+
 chunking:
   target_tokens: 400
   overlap_tokens: 50
   min_tokens: 80
+  short_chunk_policy: merge
+  tokenizer: lexical-v1
 
 embedding:
   model: BAAI/bge-base-en-v1.5

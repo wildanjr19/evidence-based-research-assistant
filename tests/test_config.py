@@ -58,6 +58,14 @@ def test_missing_key_is_clear(config_data: dict, tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("section", "key", "value"),
     [
+        ("parsing", "margin_ratio", 0.5),
+        ("parsing", "margin_ratio", 0),
+        ("parsing", "repeated_margin_ratio", 0),
+        ("parsing", "repeated_margin_ratio", 1.1),
+        ("parsing", "min_repeated_pages", 1),
+        ("parsing", "heading_max_words", 0),
+        ("chunking", "short_chunk_policy", "keep"),
+        ("chunking", "tokenizer", "unknown"),
         ("ingestion", "max_papers", 0),
         ("ingestion", "page_size", 0),
         ("ingestion", "request_delay_seconds", 2.9),
@@ -144,3 +152,21 @@ def test_relative_data_paths_do_not_depend_on_config_location(
 ) -> None:
     config = load_config(write_config(tmp_path, config_data))
     assert config.paths.raw_dir == "data/raw"
+
+
+def test_m1_configs_load_with_explicit_m2_defaults(config_data: dict, tmp_path: Path) -> None:
+    del config_data["parsing"]
+    del config_data["chunking"]["short_chunk_policy"]
+    del config_data["chunking"]["tokenizer"]
+    config = load_config(write_config(tmp_path, config_data))
+    assert config.parsing == load_config(DEFAULT_CONFIG).parsing
+    assert config.chunking.short_chunk_policy == "merge"
+    assert config.chunking.tokenizer == "lexical-v1"
+
+
+def test_null_parsing_section_does_not_silently_use_defaults(
+    config_data: dict, tmp_path: Path
+) -> None:
+    config_data["parsing"] = None
+    with pytest.raises(ConfigError, match="parsing"):
+        load_config(write_config(tmp_path, config_data))

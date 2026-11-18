@@ -1,7 +1,7 @@
 """Load the experiment configuration without initializing models or clients."""
 
 import math
-from dataclasses import dataclass, fields
+from dataclasses import MISSING, dataclass, fields
 from pathlib import Path
 from typing import TypeVar
 
@@ -24,10 +24,20 @@ class IngestionConfig:
 
 
 @dataclass(frozen=True)
+class ParsingConfig:
+    margin_ratio: float = 0.08
+    repeated_margin_ratio: float = 0.6
+    min_repeated_pages: int = 2
+    heading_max_words: int = 16
+
+
+@dataclass(frozen=True)
 class ChunkingConfig:
     target_tokens: int
     overlap_tokens: int
     min_tokens: int
+    short_chunk_policy: str = "merge"
+    tokenizer: str = "lexical-v1"
 
 
 @dataclass(frozen=True)
@@ -85,6 +95,7 @@ class PathsConfig:
 @dataclass(frozen=True)
 class Config:
     ingestion: IngestionConfig
+    parsing: ParsingConfig
     chunking: ChunkingConfig
     embedding: EmbeddingConfig
     retrieval: RetrievalConfig
@@ -129,19 +140,21 @@ def _parse_value(value: object, expected: object, key: str) -> object:
 
 
 def _section(raw: dict, name: str, section_type: type[T]) -> T:
+    section_fields = fields(section_type)
     section = raw.get(name)
+    if name not in raw and all(field.default is not MISSING for field in section_fields):
+        section = {}
     if not isinstance(section, dict):
         raise ConfigError(f"{name}: required section must be a mapping")
-    section_fields = fields(section_type)
     names = {field.name for field in section_fields}
     if unknown := section.keys() - names:
         raise ConfigError(f"{name}: unknown keys: {', '.join(sorted(map(str, unknown)))}")
     values = {}
     for field in section_fields:
         key = f"{name}.{field.name}"
-        if field.name not in section:
+        if field.name not in section and field.default is MISSING:
             raise ConfigError(f"{key}: required key is missing")
-        value = _parse_value(section[field.name], field.type, key)
+        value = _parse_value(section.get(field.name, field.default), field.type, key)
         if field.type is int:
             minimum = 0 if field.name in {"overlap_tokens", "rrf_k", "seed"} else 1
             if value < minimum:
@@ -166,6 +179,7 @@ def load_config(path: str | Path = "configs/config.yaml") -> Config:
 
     config = Config(
         ingestion=_section(raw, "ingestion", IngestionConfig),
+        parsing=_section(raw, "parsing", ParsingConfig),
         chunking=_section(raw, "chunking", ChunkingConfig),
         embedding=_section(raw, "embedding", EmbeddingConfig),
         retrieval=_section(raw, "retrieval", RetrievalConfig),
@@ -178,6 +192,16 @@ def load_config(path: str | Path = "configs/config.yaml") -> Config:
         raise ConfigError("ingestion.request_delay_seconds: must be >= 3 (arXiv rate limit)")
     if config.ingestion.timeout_seconds <= 0:
         raise ConfigError("ingestion.timeout_seconds: must be > 0")
+    if not 0 < config.parsing.margin_ratio < 0.5:
+        raise ConfigError("parsing.margin_ratio: must be between 0 and 0.5 (exclusive)")
+    if not 0 < config.parsing.repeated_margin_ratio <= 1:
+        raise ConfigError("parsing.repeated_margin_ratio: must be > 0 and <= 1")
+    if config.parsing.min_repeated_pages < 2:
+        raise ConfigError("parsing.min_repeated_pages: must be >= 2")
+    if config.chunking.short_chunk_policy not in {"merge", "drop"}:
+        raise ConfigError("chunking.short_chunk_policy: must be merge or drop")
+    if config.chunking.tokenizer != "lexical-v1":
+        raise ConfigError("chunking.tokenizer: only lexical-v1 is available in M2")
     if config.chunking.overlap_tokens >= config.chunking.target_tokens:
         raise ConfigError("chunking.overlap_tokens: must be < chunking.target_tokens")
     if config.chunking.min_tokens > config.chunking.target_tokens:

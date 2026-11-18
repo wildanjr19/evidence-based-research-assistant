@@ -1,0 +1,1 @@
+"""Deterministic section-aware chunking."""

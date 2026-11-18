@@ -47,6 +47,13 @@ def make_chunk_id(paper_id: str, page: int, ordinal: int) -> str:
     return f"{paper_id}:p{page}:c{ordinal:02d}"
 
 
+def paper_file_stem(paper_id: str) -> str:
+    """Use the same Windows-safe paper filename across ingestion, parsing, and chunking."""
+    if not is_valid_paper_id(paper_id):
+        raise ValueError(f"Invalid paper ID: {paper_id!r}")
+    return paper_id.replace(":", "_").replace("/", "_")
+
+
 def make_run_id(started_at: datetime | None = None) -> str:
     """Build a UTC timestamp plus random suffix, so runs never reuse a timestamp alone."""
     started_at = started_at if started_at is not None else datetime.now(UTC)

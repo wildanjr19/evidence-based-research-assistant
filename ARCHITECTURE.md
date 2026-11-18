@@ -26,6 +26,7 @@ Spesifikasi teknis Evidence-Based Research Assistant. Dokumen ini adalah sumber 
 src/rag/
   config.py        loader + validasi config YAML -> objek bertipe
   ids.py           pembuatan & validasi ID chunk, paper, run
+  files.py         penulisan file atomik bersama, tanpa mengganti format ID
   ingestion/       klien arXiv/OpenAlex/PMC, unduh PDF, metadata + lisensi
   parsing/         parser PyMuPDF, normalisasi teks, deteksi section (GROBID: v2)
   chunking/        section-aware chunking, penetapan halaman
@@ -53,7 +54,7 @@ Setiap tahap adalah perintah terpisah yang idempoten dan bisa dijalankan ulang p
 |---|---|---|---|---|
 | 1 | Discover | query/kategori domain, batas jumlah | metadata kandidat + status open access + lisensi | `data/raw/candidates.jsonl` |
 | 2 | Fetch | ID kandidat | PDF + `sha256` + metadata SQLite | `data/raw/pdf/<safe_paper_id>.pdf` |
-| 3 | Parse | PDF | teks per halaman, section, referensi | `data/parsed/<paper_id>.json` |
+| 3 | Parse | PDF | teks per halaman dan section; referensi sebagai teks | `data/parsed/<safe_paper_id>.json` |
 | 4 | Chunk | teks terparse | chunk + halaman + section | tabel `chunk` |
 | 5 | Index | chunk | vektor + indeks BM25 | `data/index/vectors.lance`, tabel FTS5 |
 | 6 | Retrieve | pertanyaan | kandidat berperingkat | (in-memory) |
@@ -68,6 +69,16 @@ Implementasi M1 mempertahankan `paper.pdf_sha256 NOT NULL`: Discover menyimpan k
 Pencarian memakai Atom API arXiv; lisensi diperiksa melalui OAI-PMH `arXivRaw` dari sumber arXiv yang sama. Karena OAI mengekspos metadata versi terbaru, nomor versi kandidat wajib cocok dengan versi terbaru dalam riwayat OAI sebelum lisensinya dipakai. Kandidat tanpa lisensi yang dikenali dan diizinkan config ditolak dengan log alasan. Metadata di-cache per hari UTC, request serial dengan jeda minimal 3 detik. Batas `ingestion.max_papers` menghitung hasil pencarian yang diperiksa, bukan hanya paper yang lolos. Referensi protokol: [OAI-PMH](https://info.arxiv.org/help/oa/index.html), [lisensi](https://info.arxiv.org/help/license/index.html), [ketentuan API](https://info.arxiv.org/help/api/tou.html).
 
 Pemisahan penting: **parsing dan chunking tidak boleh dipanggil saat query time.** Kalau terjadi, latensi dan biaya tidak terkontrol.
+
+### Implementasi preprocessing M2
+
+Parser memakai baris, bounding box, dan font dari PyMuPDF. Urutan baca dua kolom dipisahkan oleh baris yang melintasi tengah halaman. Teks margin hanya dibuang bila pola yang sama muncul di cukup banyak halaman, sesuai `parsing.margin_ratio`, `repeated_margin_ratio`, dan `min_repeated_pages`. Heading umum atau bernomor dideteksi dengan batas `heading_max_words`; bold parsial dalam daftar bernomor tidak dianggap sebagai bold seluruh heading. Ini heuristik, bukan ekstraksi struktur paper yang sempurna.
+
+Artefak parsed menyimpan halaman 1-indexed, teks per baris, section, urutan section, serta manifest hash PDF, versi PyMuPDF, versi normalisasi, dan config parsing. Hash isi dokumen diverifikasi sebelum chunking. Parser memperbarui `paper.parse_status`; kegagalan satu paper tidak menghentikan paper lain. Detail kegagalan dan config efektif ditulis ke laporan run baru di `data/parsed/reports/` tanpa mengubah skema SQLite.
+
+Tokenisasi M2 adalah `lexical-v1`: regex `\w+|[^\w\s]`, bukan tokenizer model. `n_tokens` menghitung token leksikal pada teks chunk. Batas section dipertahankan, overlap diterapkan dalam section yang sama, dan ordinal chunk tetap global per paper. Kebijakan `merge` boleh membuat chunk terakhir melebihi target ketika ekor pendek digabung; `drop` membuang ekor pendek. Section pendek yang tidak dapat digabung dalam section yang sama dibuang pada kedua kebijakan, dengan jumlah token yang dibuang dicatat. M3 wajib memeriksa batas tokenizer embedding sebelum indexing; tidak boleh memotong teks diam-diam.
+
+Pengulangan parsing memerlukan manifest yang sama. Penyimpanan chunk hanya menerima data baru atau baris yang persis sama dengan yang sudah ada. Perubahan input/config yang menghasilkan artefak berbeda ditolak tanpa menghapus chunk atau menimpa hasil parsed lama; gunakan direktori/database terpisah untuk eksperimen. Nama file memakai `safe_paper_id` seperti M1, tanpa mengubah ID kanonis. OCR dan ekstraksi tabel/referensi terstruktur belum termasuk M2.
 
 ### 3.1 Alur runtime (query time)
 
@@ -364,7 +375,9 @@ Aturan pelaporan:
 
 `configs/config.yaml` memuat seluruh knob. Kunci wajib (lihat file untuk nilai default):
 
-`ingestion` (query, max_papers, page_size, request_delay_seconds, timeout_seconds, max_pdf_bytes, allowed_licenses), `chunking` (target_tokens, overlap_tokens, min_tokens), `embedding` (model, batch_size, device), `retrieval` (dense_top_k, bm25_top_k, rrf_k, rerank_candidates, final_top_k, use_reranker), `generation` (model, temperature, max_calls_per_run), `verification` (minicheck_model, judge_model, judge_sample_rate, seed), `evaluation` (ks, dataset_path).
+`ingestion` (query, max_papers, page_size, request_delay_seconds, timeout_seconds, max_pdf_bytes, allowed_licenses), `parsing` (margin_ratio, repeated_margin_ratio, min_repeated_pages, heading_max_words), `chunking` (target_tokens, overlap_tokens, min_tokens, short_chunk_policy, tokenizer), `embedding` (model, batch_size, device), `retrieval` (dense_top_k, bm25_top_k, rrf_k, rerank_candidates, final_top_k, use_reranker), `generation` (model, temperature, max_calls_per_run), `verification` (minicheck_model, judge_model, judge_sample_rate, seed), `evaluation` (ks, dataset_path).
+
+Untuk kompatibilitas config M0/M1, bagian `parsing` dan field baru `chunking.short_chunk_policy`/`tokenizer` memakai default bila tidak diberikan. Nilai efektif tetap disimpan di laporan. Nilai eksplisit yang salah, termasuk `parsing: null`, tetap ditolak.
 
 ---
 
@@ -387,7 +400,7 @@ Diputuskan sebelum M0. Mengubahnya berarti perubahan dependensi dan/atau pembang
 
 ### 12.1 Yang masih terbuka
 
-1. **Ambang `low_quality`:** rasio simbol/karakter aneh dan panjang minimum belum ditentukan. Diputuskan di M2 berdasarkan distribusi korpus nyata, bukan angka karangan.
+1. **Kalibrasi `low_quality`:** baseline M2 menandai karakter pengganti Unicode (`U+FFFD`) dan kontrol rusak; batas panjang memakai `chunking.min_tokens`. Uji awal satu PDF tidak menemukan karakter pengganti, sehingga belum cukup untuk menetapkan ambang rasio simbol pada korpus penuh. Kalibrasi kuantitatif tetap terbuka dan tidak dianggap selesai oleh flag baseline ini.
 2. **Jumlah paper final:** target 100–500 dari OVERVIEW; angka pastinya ditentukan setelah uji unduh M1.
 3. **Provider LLM generator:** `deepseek-chat` sebagai default di config, tetapi provider final dipilih setelah uji biaya/latensi singkat di M5.
 4. **ID model MiniCheck:** perlu diverifikasi ke Hugging Face saat M6 (`lytang/MiniCheck-Flan-T5-Large` atau varian RoBERTa yang lebih ringan). Jangan diasumsikan benar sebelum diuji.

@@ -41,6 +41,15 @@ Sudah diuji nyata dengan config terpisah yang membatasi satu kandidat. Default r
 
 TODO M6: implementasikan dan verifikasi perintah evaluasi retrieval/sitasi. Runner evaluasi belum tersedia; lokasi config adalah `configs/config.yaml`.
 
+Perintah M2 (lokal, memakai corpus hasil M1):
+
+```bash
+python -m uv run python -m rag.parsing --config configs/config.yaml
+python -m uv run python -m rag.chunking --config configs/config.yaml
+```
+
+Gunakan `--paper-id` untuk satu paper. Kedua perintah sudah diuji dengan config lokal terpisah pada PDF 16 halaman. `n_tokens` M2 memakai token leksikal, bukan tokenizer model; M3 wajib memeriksa batas embedding. Perubahan hasil parsing/chunking lama ditolak tanpa penghapusan otomatis. Alasan kegagalan berada di laporan run dalam `paths.parsed_dir/reports/`.
+
 Jalankan test dan lint setelah setiap perubahan kode, sebelum menyatakan tugas selesai.
 
 ## 3. Struktur repo

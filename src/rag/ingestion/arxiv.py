@@ -1,8 +1,6 @@
 import hashlib
 import logging
-import os
 import re
-import tempfile
 import time
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
@@ -13,7 +11,8 @@ from urllib.parse import urlsplit
 import httpx
 
 from rag.config import IngestionConfig
-from rag.ids import make_paper_id
+from rag.files import atomic_write
+from rag.ids import make_paper_id, paper_file_stem
 
 logger = logging.getLogger(__name__)
 ATOM = "{http://www.w3.org/2005/Atom}"
@@ -85,20 +84,7 @@ class Paper:
     @property
     def filename(self) -> str:
         # Keep canonical IDs in metadata; sanitize only filenames for Windows.
-        return f"arxiv_{self.source_id.replace('/', '_')}.pdf"
-
-
-def atomic_write(path: Path, content: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = None
-    try:
-        with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as stream:
-            temporary = Path(stream.name)
-            stream.write(content)
-        os.replace(temporary, path)
-    finally:
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)
+        return f"{paper_file_stem(self.paper_id)}.pdf"
 
 
 def _text(element: ET.Element, path: str) -> str:

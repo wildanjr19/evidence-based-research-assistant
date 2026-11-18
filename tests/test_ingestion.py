@@ -9,8 +9,9 @@ import httpx
 import pytest
 
 from rag.config import Config, load_config
+from rag.files import atomic_write
 from rag.ingestion.__main__ import main
-from rag.ingestion.arxiv import ArxivClient, Paper, atomic_write, parse_license_record
+from rag.ingestion.arxiv import ArxivClient, Paper, parse_license_record
 from rag.ingestion.pipeline import discover, fetch, load_candidates
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -318,7 +319,7 @@ def test_atomic_write_preserves_previous_content_on_failure(
     def fail_replace(*args: object) -> None:
         raise OSError("fixture failure")
 
-    monkeypatch.setattr("rag.ingestion.arxiv.os.replace", fail_replace)
+    monkeypatch.setattr("rag.files.os.replace", fail_replace)
     with pytest.raises(OSError, match="fixture failure"):
         atomic_write(path, b"new")
     assert path.read_bytes() == b"previous"

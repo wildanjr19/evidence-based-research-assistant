@@ -2,7 +2,7 @@
 
 Sistem RAG lokal untuk literatur ilmiah: setiap klaim dalam jawaban menunjuk ke chunk sumber (paper, halaman, kutipan), dan ketepatan sitasinya diukur, bukan diklaim.
 
-Status: **M0 dan M1 diimplementasikan**: fondasi config/ID, discovery arXiv dengan pemeriksaan lisensi, unduhan PDF, dan metadata SQLite. Parsing, retrieval, generation, dan evaluasi belum tersedia. Belum ada angka evaluasi.
+Status: **M0–M2 diimplementasikan**: fondasi config/ID, ingestion arXiv berlisensi, parsing PDF, dan chunking deterministik ke SQLite. Indexing, retrieval, generation, dan evaluasi belum tersedia. Belum ada angka evaluasi.
 
 ## Dokumentasi
 
@@ -79,6 +79,29 @@ Request berlangsung satu per satu dengan jeda minimal 3 detik, sesuai [ketentuan
 Pengulangan memakai PDF lokal dan mempertahankan baris SQLite serta `parse_status`. Bila hash berbeda untuk versi paper yang sama, proses gagal tanpa memperbarui metadata atau menimpa file lama. Pemeriksaan struktur PDF lengkap ditunda ke parsing M2; M1 baru memeriksa header `%PDF-`.
 
 Verifikasi M1 pada 2026-11-18: 130 test lulus (semua memakai respons lokal untuk ingestion), lint serta format bersih. Uji nyata dibatasi satu kandidat pada query domain v1: `arxiv:2605.14488v1` diterima dengan lisensi `CC-BY-4.0`, PDF terunduh dan metadata tersimpan. Artefak uji berada di `data/m1-smoke/`, diabaikan Git. Ini belum membuktikan kualitas seleksi atau cakupan korpus final.
+
+## Parsing dan chunking M2
+
+Jalankan M1 dengan config yang sama lebih dulu, lalu:
+
+```bash
+python -m uv run python -m rag.parsing --config configs/config.yaml
+python -m uv run python -m rag.chunking --config configs/config.yaml
+```
+
+Kedua perintah mendukung `--paper-id arxiv:2401.12345v1` untuk satu paper. Perintah berjalan lokal, tanpa jaringan, model ML, GPU, atau API LLM.
+
+Parser memakai posisi baris dan informasi font dari [PyMuPDF](https://pymupdf.readthedocs.io/en/latest/recipes-text.html). Ia mengurutkan dua kolom sederhana, menormalkan Unicode/whitespace, membuang teks margin yang berulang lintas halaman, serta mendeteksi heading umum/bernomor. Nomor halaman PDF tetap 1-indexed. Teks dan section disimpan ke `data/parsed/<safe_paper_id>.json` bersama hash dokumen, hash PDF, versi PyMuPDF, versi normalisasi, dan config parsing. `paper.parse_status` menjadi `ok` atau `failed`; alasan kegagalan tersimpan di laporan per run pada `data/parsed/reports/`.
+
+Chunker menjaga batas section, rentang halaman, urutan global chunk per paper, dan overlap dari config. `chunking.tokenizer: lexical-v1` menghitung kata dan tanda baca dengan regex `\w+|[^\w\s]`. Angka `n_tokens` **bukan jumlah token model embedding/LLM**; pemeriksaan batas model menjadi pekerjaan M3. Tidak ada bobot model yang diunduh untuk M2.
+
+`short_chunk_policy: merge` menggabungkan ekor pendek dengan chunk sebelumnya dalam section yang sama; hasil gabungan dapat melebihi `target_tokens`. Pilihan `drop` membuang token baru pada ekor pendek. Section yang seluruhnya lebih pendek dari `min_tokens` dibuang pada kedua kebijakan, karena tidak digabung melintasi section. Jumlah token unik yang dibuang dilaporkan. `quality_flag=low_quality` hanya menandai karakter pengganti Unicode atau kontrol yang rusak; belum menjadi ukuran kualitas parsing secara menyeluruh.
+
+Pengulangan memakai hasil parsing dengan manifest yang sama dan memverifikasi kesamaan seluruh baris chunk. Bila input/config parsing atau isi chunk berbeda, proses menolak menimpa hasil lama. Gunakan `parsed_dir` dan database terpisah untuk eksperimen; penghapusan/rebuild data lama memerlukan persetujuan. Nama file tetap aman di Windows, sedangkan format ID/sitasi dan skema SQLite tidak berubah. Config M0/M1 tetap bisa dimuat; field M2 yang belum ada memakai default dan dicatat dalam config efektif laporan.
+
+Verifikasi M2 pada 2026-11-18: 165 test lulus pada jalur penuh dan `not gpu`, lint serta format bersih. Test membuat PDF sintetis di direktori sementara, termasuk dua kolom, header/footer berulang, inline bold pada daftar bernomor, file rusak, dan halaman tanpa teks. Uji PDF nyata `arxiv:2605.14488v1` menghasilkan 20 chunk dari 16 halaman, tanpa token leksikal terbuang; pengulangan identik. Config, database salinan metadata M1, teks parsed, dan laporan berada di `data/m2-smoke-v2/` yang diabaikan Git. PDF asli dan database M1 dipertahankan. Percobaan awal dengan versi normalisasi lama tetap tersimpan di `data/m2-smoke/`.
+
+OCR belum tersedia. Tabel, rumus, layout lebih dari dua kolom, serta heading yang tidak biasa belum divalidasi pada korpus besar. Keberhasilan satu PDF tidak mengukur akurasi sitasi atau kualitas retrieval.
 
 ## Hasil evaluasi
 

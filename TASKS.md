@@ -49,11 +49,15 @@ Karena skema mewajibkan hash PDF, metadata masuk JSONL dahulu dan baru disimpan 
 
 **Acceptance criteria:**
 
-- [ ] Setiap chunk punya `page_start`, `page_end`, `section` (bila terdeteksi), `n_tokens`.
-- [ ] Chunk di bawah `min_tokens` digabung atau dibuang, sesuai aturan di config.
-- [ ] Chunking deterministik: input sama → ID dan isi sama.
-- [ ] Test unit: chunking teks sintetis, termasuk teks dua kolom dan header/footer berulang.
-- [ ] Dilaporkan berapa paper gagal di-parse dan alasannya (`parse_status`).
+- [x] Setiap chunk punya `page_start`, `page_end`, `section` (bila terdeteksi), `n_tokens`.
+- [x] Chunk di bawah `min_tokens` digabung atau dibuang, sesuai aturan di config.
+- [x] Chunking deterministik: input sama → ID dan isi sama.
+- [x] Test unit: chunking teks sintetis, termasuk teks dua kolom dan header/footer berulang.
+- [x] Dilaporkan berapa paper gagal di-parse dan alasannya (`parse_status`).
+
+**Verifikasi M2 (2026-11-18):** 165 test lulus pada jalur penuh dan `not gpu`; Ruff lint/format bersih. Uji lokal satu PDF nyata 16 halaman menghasilkan 20 chunk, 0 token leksikal terbuang, dan baris yang identik saat diulang. Artefak terverifikasi ada di `data/m2-smoke-v2/`; percobaan awal tetap disimpan, tanpa penghapusan data M1 atau chunk lama.
+
+Default `lexical-v1` tidak mengklaim jumlah token model. `merge` hanya menggabungkan ekor dalam section yang sama dan dapat melebihi target; section pendek yang tidak dapat digabung dibuang. Jumlah token terbuang dicatat. M3 wajib memeriksa batas model embedding. OCR, layout kompleks, dan kalibrasi kualitas pada korpus penuh belum dilakukan.
 
 ---
 
