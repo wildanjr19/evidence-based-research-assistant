@@ -1,0 +1,27 @@
+{
+  "recorded_at": "2026-11-19T01:11:29.417511+00:00",
+  "version": "m6-multipaper-reviewed-v1",
+  "gold_status": "ai_curated_human_reviewed",
+  "reviewer": "chat-user",
+  "review_evidence": "Sudah saya tinjau; setujui draf v1",
+  "review_evidence_date": "2026-11-19",
+  "dataset_sha256": "67df3529d67ceabf6770e20ab32871752b3509508052425a7119ed696e9f45d9",
+  "question_count": 30,
+  "question_types": {
+    "lookup": 12,
+    "comparison": 8,
+    "synthesis": 6,
+    "unanswerable": 4
+  },
+  "draft_source": "data\\m6-multipaper\\20261119T004114Z\\questions.draft-v1.jsonl",
+  "corpus_sha256": "2d8292bc316ed51c591434b910383c64b0b3b6b7a8b32078e97838e03fb8b5f3",
+  "corpus_hash_definition": "raw SQLite chunk rows, as recorded before first retrieval",
+  "corpus_config": "data\\m6-multipaper\\20261119T004114Z\\config-corpus-v2.yaml",
+  "primary_citation_mode_predeclared": "hybrid+rerank",
+  "human_review_after_preliminary_retrieval": true,
+  "dataset_changed_since_freeze": false,
+  "source_discrepancy": "LegalBench-RAG total QA: abstract 6858, section 3.3.1 6889; excluded topic",
+  "scope": "30 questions on four CC-BY-4.0 papers; not the 100-500 paper v1 corpus",
+  "manual_claim_labels": "52 prior single-paper pairs reported separately; not reused on re-chunked corpus",
+  "new_paid_api_calls_authorized": 0
+}

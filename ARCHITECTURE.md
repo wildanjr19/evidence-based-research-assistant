@@ -407,7 +407,8 @@ menulis label semantik palsu ke tabel atau menghilangkan klaim.
 Client generation dibagi antar pertanyaan/mode agar batas request mencakup
 seluruh batch; judge mempunyai batas batch terpisah. Sampel memakai kunci
 qid/ordinal dan seed agar tidak bergantung pada ID run acak. Keluarga judge dan
-generator harus berbeda pada endpoint provider standar. Label judge serta
+generator harus berbeda pada endpoint provider standar atau gateway Surplus
+yang dibatasi secara eksplisit. Label judge serta
 agreement dilaporkan terpisah dari metrik utama MiniCheck.
 
 Metrik dihitung dengan penyebut eksplisit: pasangan tersitasi, semua klaim
@@ -431,6 +432,21 @@ Draf 30 pertanyaan satu paper di `eval/questions.draft-v1.jsonl` belum menjadi
 gold set manual final. Rincian provenance, bahan anotasi, dan batas cakupan ada
 di `eval/README.md`; verifikasi/handoff ada di TASKS.md. Tidak ada perubahan
 skema SQLite, format sitasi, dataset final, atau konfigurasi sumber CUDA.
+
+### Judge generatif melalui Surplus
+
+`verification.judge_provider: surplus-chat` memakai Chat Completions dengan
+`SURPLUS_API_KEY`, `SURPLUS_API_URL`, dan `GPT_MODEL_ID` dari environment/`.env`.
+Endpoint dibatasi ke HTTPS `api.surplusintelligence.ai/v1`, tanpa credential,
+query, atau fragment. Model harus keluarga GPT; generator OpenAI tetap ditolak
+karena gateway tidak membuat kedua model berasal dari keluarga berbeda.
+Config/hash run mencatat model dan endpoint efektif. Respons harus melaporkan
+model yang diminta atau snapshot bertanggalnya; substitusi model ditolak.
+
+Judge tetap menghasilkan label dan alasan sesuai protokol M6. Cache M5
+membedakan provider/endpoint/model/backend/prompt; token dan model respons
+dicatat. Batas batch dan larangan retry SDK tetap berlaku. Adapter memakai SDK
+yang sudah terpasang, tanpa perubahan skema SQLite atau format sitasi.
 
 ### Jev decision judge opsional (pilot M6)
 

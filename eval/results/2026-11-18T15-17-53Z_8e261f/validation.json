@@ -1,0 +1,26 @@
+{
+  "status": "passed",
+  "input_hashes_verified": 19,
+  "source_labels_and_corpus_preserved": true,
+  "revised_pairs": [
+    "jev-pilot-row-08",
+    "jev-pilot-row-02",
+    "jev-pilot-row-18",
+    "jev-pilot-row-35"
+  ],
+  "unique_human_pilot_pairs": 12,
+  "new_unique_pairs": 0,
+  "rationales_preserved": true,
+  "manual_loader_accepted": 12,
+  "agreement_independently_recomputed": true,
+  "executed_script_snapshot": "data/jev-smoke/surplus-jev-v1/score-human-v3-executed-v1.py.txt",
+  "executed_script_sha256": "c6dd00547b456f82674fef57441f8f70965920e27584dec8612037cf23f67ea0",
+  "formatted_script_same_ast": true,
+  "outputs": {
+    "data/jev-smoke/surplus-jev-v1/human-labels-v3.jsonl": "133c5d2145151dd24b1fc0b2e2f7f3dd2acf0bcc7fd3fd026fe4137eb3c88c1b",
+    "data/jev-smoke/surplus-jev-v1/human-confirm-four-completed-v1.md": "f87102e0c642301eb8c79c299dfceeb7dd63412b8025fc517f8fd5aea0c915d9",
+    "eval/results/2026-11-18T15-17-53Z_8e261f/metrics.json": "9440a0dcd50b11d9e5393afca4c338e5c21242978fe1ca8408e91c38cc91a3a1",
+    "eval/results/2026-11-18T15-17-53Z_8e261f/per_pair.jsonl": "47d3669f9a5c1adf1f63464009b065ee3fc7637e7c62e7e0b2b6207c64076b0f",
+    "eval/results/2026-11-18T15-17-53Z_8e261f/report.md": "5fe291cde5969a7e8b181abc7c2467185f669090dc374283d1a7e5a4969afecf"
+  }
+}

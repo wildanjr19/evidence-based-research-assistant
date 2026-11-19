@@ -1,0 +1,28 @@
+{
+  "status": "passed",
+  "input_hashes_verified": 12,
+  "human_labels_validated": 22,
+  "prior_labels_unchanged": true,
+  "canonical_evidence_verified": 10,
+  "cached_predictions_replayed": 7,
+  "new_verifier_inferences": 0,
+  "unverified_ids": [
+    "m6-remaining-03",
+    "m6-remaining-04",
+    "m6-remaining-06"
+  ],
+  "config_hash": "b20b2aba4c9d475ae2588c4eec9a3ddd625b5a54d3bda5c92d175acc089dfbc8",
+  "python_version": "3.11.0 (main, Oct 24 2022, 18:26:48) [MSC v.1933 64 bit (AMD64)]",
+  "library_versions": {
+    "torch": "2.15.0+cu132",
+    "transformers": "5.23.0",
+    "pyyaml": "6.0.3"
+  },
+  "output_hashes": {
+    "data/annotations/batch01-2026-11-18T15-34-19Z_111f6f/human-batch01.jsonl": "914b106257a447fd296e7492344f5da43988d787a6402b33d7abf5dc71216bd9",
+    "data/annotations/batch01-2026-11-18T15-34-19Z_111f6f/human-labels.jsonl": "7ce2ccda7756169bf58c126e103a225bf724b6b409d8ea92602ea52e5d8792cb",
+    "eval/results/2026-11-18T15-34-19Z_111f6f/metrics.json": "279137f212ca17308f202d6869831973f2bc9d0fd5aaa5e38109927065080d0a",
+    "eval/results/2026-11-18T15-34-19Z_111f6f/per_pair.jsonl": "8640d32b09ed0909d0b49cec5a7a5832cffc02084f8096ff6a078747ad14d711",
+    "eval/results/2026-11-18T15-34-19Z_111f6f/report.md": "8ea84f3a73764017cfbce5575431e22a17dd109a72c696bc09b2c1fcdbcf7cd4"
+  }
+}

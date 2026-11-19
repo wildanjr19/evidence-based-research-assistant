@@ -1,0 +1,20 @@
+{
+  "status": "passed",
+  "input_hashes_verified": 14,
+  "human_labels_validated": 52,
+  "new_labels_validated": 30,
+  "canonical_evidence_verified": 52,
+  "prior_22_labels_preserved": true,
+  "rationales_preserved": true,
+  "cohort_metrics_independently_recomputed": true,
+  "cached_predictions_replayed": 45,
+  "new_verifier_inferences": 0,
+  "public_reports_contain_no_complete_chunks": true,
+  "output_hashes": {
+    "data/annotations/batches02-04-2026-11-19T00-31-04Z_673846/human-batches02-04.jsonl": "18650234770755ff7d3854508de6eb9aa156ebf4b4cd5b37b060679f806debd9",
+    "data/annotations/batches02-04-2026-11-19T00-31-04Z_673846/human-labels.jsonl": "1a7d8f866a5b346a0c030f47bf9c32fe3cae369c20b24b03bf84b7d6cfc5f560",
+    "eval/results/2026-11-19T00-31-04Z_673846/metrics.json": "b50847ae080a9814f0ae67ce56edc38372cf716b7665dc2e6815ae76ecfaabaa",
+    "eval/results/2026-11-19T00-31-04Z_673846/per_pair.jsonl": "55f514ae3c076251c6daa27ce3e9372c1c9015491e54a4d13afd683797755ab5",
+    "eval/results/2026-11-19T00-31-04Z_673846/report.md": "ff7672bd4d68699e9a8bdeb4b149fdd591c3bffdfd3bc37e682adb6bf0847cf4"
+  }
+}

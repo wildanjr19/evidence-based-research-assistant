@@ -1,0 +1,142 @@
+{
+  "run_id": "2026-11-19T00:55:50Z_43fb5e",
+  "stage": "retrieval_evaluation",
+  "status": "ok",
+  "mode": "hybrid+rerank",
+  "config": {
+    "ingestion": {
+      "query": "(ti:\"retrieval augmented generation\" OR ti:\"retrieval-augmented generation\" OR ti:RAG) AND (ti:evaluation OR ti:benchmark)",
+      "max_papers": 10,
+      "page_size": 10,
+      "request_delay_seconds": 3.0,
+      "timeout_seconds": 30.0,
+      "max_pdf_bytes": 52428800,
+      "allowed_licenses": [
+        "CC-BY-4.0",
+        "CC-BY-3.0",
+        "CC0-1.0"
+      ]
+    },
+    "parsing": {
+      "margin_ratio": 0.08,
+      "repeated_margin_ratio": 0.6,
+      "min_repeated_pages": 2,
+      "heading_max_words": 16
+    },
+    "chunking": {
+      "target_tokens": 220,
+      "overlap_tokens": 40,
+      "min_tokens": 60,
+      "short_chunk_policy": "drop",
+      "tokenizer": "lexical-v1"
+    },
+    "embedding": {
+      "model": "BAAI/bge-base-en-v1.5",
+      "batch_size": 32,
+      "device": "cpu",
+      "revision": "a5beb1e3e68b9ab74eb54cfd186867f64f240e1a",
+      "max_tokens": 512
+    },
+    "retrieval": {
+      "dense_top_k": 50,
+      "bm25_top_k": 50,
+      "rrf_k": 60,
+      "rerank_candidates": 50,
+      "final_top_k": 8,
+      "use_reranker": true,
+      "reranker_model": "BAAI/bge-reranker-base",
+      "query_prefix": "Represent this sentence for searching relevant passages: ",
+      "reranker_revision": "2cfc18c9415c912f9d8155881c133215df768a70",
+      "reranker_max_tokens": 512,
+      "reranker_batch_size": 16
+    },
+    "generation": {
+      "provider": "deepseek",
+      "model": "deepseek-flash",
+      "temperature": 0.0,
+      "max_calls_per_run": 1,
+      "max_output_tokens": 2048,
+      "timeout_seconds": 60.0,
+      "base_url": "",
+      "thinking": false
+    },
+    "verification": {
+      "minicheck_model": "lytang/MiniCheck-Flan-T5-Large",
+      "judge_model": "gpt-4o-mini",
+      "judge_provider": "openai",
+      "judge_sample_rate": 0.25,
+      "seed": 42,
+      "minicheck_revision": "96eafd01cee2d16cf81aaa2fb226b14f422a37b3",
+      "max_tokens": 512,
+      "batch_size": 4,
+      "device": "cpu",
+      "support_threshold": 0.5,
+      "judge_max_calls_per_run": 1,
+      "judge_base_url": ""
+    },
+    "evaluation": {
+      "ks": [
+        5,
+        10,
+        20
+      ],
+      "dataset_path": "data\\m6-multipaper\\20261119T004114Z\\questions.draft-v1.jsonl",
+      "gold_labels_path": "data/m6-multipaper/20261119T004114Z/human-labels-for-new-corpus.jsonl",
+      "output_dir": "eval/results"
+    },
+    "paths": {
+      "raw_dir": "data/m6-multipaper/20261119T004114Z/raw",
+      "parsed_dir": "data/m6-multipaper/20261119T004114Z/parsed",
+      "index_dir": "data/m6-multipaper/20261119T004114Z/index",
+      "cache_dir": "data/cache",
+      "db_path": "data/m6-multipaper/20261119T004114Z/corpus.db"
+    }
+  },
+  "config_hash": "f353501050861f3744fe58a3459db55b635dfc8bbedb2405ef4552754605b78f",
+  "seed": 42,
+  "code_version": "9acf10cbfcb0b2b7a281b527fc9637f350e5799d+dirty",
+  "dataset_path": "data\\m6-multipaper\\20261119T004114Z\\questions.draft-v1.jsonl",
+  "dataset_sha256": "67df3529d67ceabf6770e20ab32871752b3509508052425a7119ed696e9f45d9",
+  "corpus_sha256": "6cff63a560718b5b26f6aa67e47441fd586efda0aef2fe17971b1423c1c4e18c",
+  "question_count": 30,
+  "ranking_depth": 20,
+  "answerable_count": 26,
+  "versions": {
+    "torch": "2.15.0+cu132",
+    "sentence-transformers": "6.3.0",
+    "transformers": "5.23.0",
+    "lancedb": "0.41.0"
+  },
+  "python": "3.11.0",
+  "sqlite": "3.38.4",
+  "fts_tokenizer": "unicode61 remove_diacritics 2",
+  "reranker": {
+    "model": "BAAI/bge-reranker-base",
+    "revision": "2cfc18c9415c912f9d8155881c133215df768a70",
+    "max_tokens": 512,
+    "truncation": "only_second",
+    "score": "raw_logit"
+  },
+  "metrics": {
+    "recall@5": 0.7435897435897435,
+    "recall@10": 0.8012820512820512,
+    "recall@20": 0.8589743589743589,
+    "mrr": 0.7104700854700856
+  },
+  "embedding": {
+    "model": "BAAI/bge-base-en-v1.5",
+    "revision": "a5beb1e3e68b9ab74eb54cfd186867f64f240e1a",
+    "dimension": 768,
+    "max_tokens": 512,
+    "normalize_embeddings": true,
+    "precision": "float32",
+    "document_prompt": ""
+  },
+  "elapsed_seconds": 5.3171196000002965,
+  "completed_questions": 30,
+  "vector_version": 1,
+  "backends": {
+    "embedder": "rag.indexing.embedding.SentenceEmbedder",
+    "reranker": null
+  }
+}

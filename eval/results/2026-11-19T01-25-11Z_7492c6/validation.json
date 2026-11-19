@@ -1,0 +1,65 @@
+{
+  "checked_at": "2026-11-19T01:32:05.993945+00:00",
+  "first_run": "2026-11-19T01:25:11Z_7492c6",
+  "replay_run": "2026-11-19T01:31:11Z_75bb36",
+  "dataset_sha256": "67df3529d67ceabf6770e20ab32871752b3509508052425a7119ed696e9f45d9",
+  "rankings_claims_verifications_metrics_identical": true,
+  "replay_paid_calls": 0,
+  "replay_new_local_verifier_pairs": 0,
+  "source_tables_unchanged": true,
+  "protected_inputs_unchanged": true,
+  "foreign_key_check": "passed",
+  "integrity_check": "passed",
+  "database_counts": {
+    "paper": 4,
+    "chunk": 236,
+    "run": 62,
+    "answer": 60,
+    "claim": 202,
+    "verification": 274
+  },
+  "minicheck_label_counts": {
+    "supported": 94,
+    "not_supported": 15
+  },
+  "judge_label_counts": {
+    "supported": 28
+  },
+  "unanswerable_controls": [
+    {
+      "qid": "multi027",
+      "status": "no_evidence",
+      "claim_count": 0
+    },
+    {
+      "qid": "multi028",
+      "status": "no_evidence",
+      "claim_count": 0
+    },
+    {
+      "qid": "multi029",
+      "status": "ok",
+      "claim_count": 1
+    },
+    {
+      "qid": "multi030",
+      "status": "no_evidence",
+      "claim_count": 0
+    }
+  ],
+  "estimated_cost_usd": {
+    "generation": 0.033306300000000004,
+    "judge": 0.00045621699999999997
+  },
+  "estimated_total_usd": 0.033762517000000006,
+  "cost_note": "DeepSeek peak cache-miss rates: conservative, cache discount not captured; judge uses user reported Surplus offer. Not a provider invoice.",
+  "current_generated_claim_human_matched_pairs": 0,
+  "prior_human_cohort": {
+    "pairs": 52,
+    "pilot_exposed": 12,
+    "remaining": 40,
+    "comparable_remaining": 35,
+    "agreement": 0.8571428571428571,
+    "kappa": 0.7102649006622517
+  }
+}

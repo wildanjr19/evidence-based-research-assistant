@@ -1,8 +1,29 @@
 # Evaluasi M6
 
-M6 masih berjalan. `questions.draft-v1.jsonl` adalah draf yang ditulis AI untuk
-ditinjau manusia, bukan gold set manual final. Dataset final `questions.jsonl`
-dan label manusia `gold_labels.jsonl` belum tersedia.
+Baseline M6 selesai untuk benchmark kecil empat paper pada 2026-11-19.
+[Laporan final](results/2026-11-19T01-25-11Z_7492c6/m6-summary.md) mencatat
+precision sitasi 86,24%, faithfulness 88,12%, dan abstention 3/4. Replay
+memakai nol request baru dengan ranking, klaim, label, dan metrik identik.
+Label manusia lama dilaporkan terpisah; accuracy pada klaim generation baru
+belum diukur. `questions.jsonl` memuat 30 pertanyaan lintas empat
+paper yang disusun AI lalu ditinjau dan disetujui pengguna pada 2026-11-19.
+Provenance dan hash ada di `questions.reviewed-v1.manifest.json`; isi identik
+dengan draf yang dibekukan sebelum retrieval. Dataset berisi 12 lookup,
+8 comparison, 6 synthesis lintas paper, dan 4 unanswerable (13,3%).
+Lihat [kesiapan batch](m6-multipaper-readiness-20261119.md) untuk catatan
+persiapan sebelum izin batch. Run nyata memakai 30 request DeepSeek dan
+28 judge Surplus, di bawah batas yang disetujui 60/50 request.
+
+`questions.draft-v1.jsonl` tetap dipertahankan sebagai draf lama satu paper.
+Uraian draf dan riwayat eksperimen di bawah mengacu pada versi lama itu.
+`gold_labels.jsonl` belum tersedia; label manusia lokal dilaporkan terpisah.
+
+Status anotasi 2026-11-19: seluruh 52 pasangan draf kini berlabel manusia pada
+versi lokal baru; bahan awal tetap null. Jumlah anotasi mencapai rentang 50–100,
+tetapi pasangan masih dari satu paper dan belum menjadi gold final. Pisahkan
+12 pasangan pilot yang sudah melihat usulan AI dari 40 pasangan batch 1–4.
+Label kumulatif tersimpan pada
+`data/annotations/batches02-04-2026-11-19T00-31-04Z_673846/human-labels.jsonl`.
 
 Draf mempunyai 30 pertanyaan: 15 lookup, 7 comparison, 4 synthesis, dan
 4 unanswerable (13,3%). Semua ID berasal dari 21 chunk pada indeks M3 satu paper,
@@ -59,6 +80,35 @@ bukan kesepakatan terhadap manusia nyata.
 disimpan sebagai `eval/gold_labels.jsonl`, keluarkan field `evidence` terlebih
 dahulu agar isi korpus tidak masuk Git. Gunakan 50–100 pasangan yang telah benar-benar
 dinilai manusia untuk acceptance M6; bahan 52 pasangan tanpa label belum memenuhinya.
+
+## Tinjauan lanjutan pilot
+
+Paket lokal tersedia di
+`data/annotations/m6-review-20261118T150117399425Z/`:
+
+- `confirm-four.md` dan JSONL pendamping memuat empat usulan AI yang berbeda
+  dari label manusia v2, beserta chunk lengkap. Label manusia baru masih kosong.
+  Tinjauan ini tidak blind karena usulan dan hasil pilot telah terlihat.
+- `remaining-01.md` sampai `remaining-04.md`, masing-masing dengan JSONL
+  pendamping, memuat 40 pasangan unik di luar 12 pasangan pilot. Urutan diacak
+  dengan seed 42; prediksi verifier tidak ditampilkan. Klaim atau paper mungkin
+  telah terlihat, sehingga ini bukan jaminan studi blind.
+- `manifest.json` menyimpan urutan pasangan, hash input/output, dan hasil
+  pemeriksaan keutuhan sumber. Skrip pembuat berada di
+  `data/jev-smoke/surplus-jev-v1/prepare-next-review.py`.
+
+Mulai dari empat kasus konfirmasi, lalu isi batch tersisa. Simpan lembar yang
+diisi sebagai file baru. Isi S/P/N, anotator, dan alasan per pasangan; untuk P,
+sebutkan bagian klaim yang didukung serta bagian yang tidak didukung. Nilai
+dukungan faktual terhadap chunk yang diberikan. Panjang jawaban, posisi abstrak,
+dan ada/tidaknya eksperimen tidak menentukan label. Semua label/annotator pada
+template JSONL masih null dan akan ditolak loader manusia sampai diisi.
+
+Empat konfirmasi merupakan tinjauan ulang pasangan pilot, bukan pasangan baru.
+Seluruh bahan tetap berasal dari 52 pasangan draf referensi satu paper; belum
+menjadi gold final atau anotasi keluaran generation benchmark. Label lama dan
+usulan AI tidak ditimpa, digabung, atau dipromosikan otomatis. M6 tetap menunggu
+penilaian manusia, korpus lintas paper, dan benchmark final.
 
 ## Run yang tersedia
 
@@ -128,3 +178,52 @@ Artefak ini secara eksplisit berjenis AI dan tidak dapat dipakai sebagai label
 manual oleh loader. Label manusia tetap utuh; jumlah label manusia dan laporan
 agreement manusia tidak bertambah dari tinjauan AI ini. Gold final M6 belum
 tersedia.
+
+Pengguna kemudian mengisi empat kasus tersebut dengan N/N/N/P. Revisi manusia
+disimpan pada `human-labels-v3.jsonl` dalam direktori pilot lokal; versi lama
+tetap utuh. Anotator kosong pada lembar diteruskan sebagai `chat-user` dari label
+sebelumnya berdasarkan pernyataan pengguna bahwa ia sendiri yang mengerjakan.
+Alasan row-35 secara eksplisit menyetujui penjelasan AI dan disimpan apa adanya.
+[Laporan v3](results/2026-11-18T15-17-53Z_8e261f/report.md) mencatat Jev cocok
+12/12 dan MiniCheck 10/10 pada pasangan yang dinilai (kappa masing-masing 1,0).
+Dua pasangan MiniCheck tetap unverified, sehingga cakupannya 10/12. Agreement
+setelah usulan AI terlihat bukan validasi independen accuracy. Jumlah pasangan
+unik pilot tetap 12; empat tinjauan merupakan revisi, bukan anotasi pasangan
+baru. Empat puluh pasangan dalam `remaining-01` sampai `remaining-04` masih
+menunggu label manusia. M6 tetap terbuka.
+
+Batch 1 kemudian diisi sembilan label pada lembar dan satu label N untuk item
+04 lewat balasan chat. Alasan item 04 belum diberikan dan tetap null. Sepuluh
+label baru (empat S, enam N) disimpan lokal pada
+`data/annotations/batch01-2026-11-18T15-34-19Z_111f6f/human-batch01.jsonl`;
+`human-labels.jsonl` di direktori yang sama menggabungkan 12 pilot v3 dengan
+10 pasangan baru, total 22 pasangan unik. Versi sebelumnya tetap utuh.
+[Laporan batch 1](results/2026-11-18T15-34-19Z_111f6f/report.md) memakai MiniCheck
+lokal: cocok 7/7 pada pasangan comparable (kappa 1,0), coverage 7/10. Item 03,
+04, dan 06 melebihi batas token dan tetap unverified tanpa truncation. Run
+incomplete; tidak ada API atau request JEV baru. Agreement batch ini dipisahkan
+dari pilot yang sudah melihat usulan AI. Tiga puluh pasangan pada batch 2–4
+masih menunggu label manusia; gold final dan M6 tetap terbuka.
+
+## Seluruh anotasi draf selesai, 2026-11-19
+
+Batch 2–4 kini juga berlabel: 30 pasangan baru (14 S, 2 P, 14 N), total 52
+pasangan unik (22 S, 3 P, 27 N). Tiga belas alasan masih kosong dan tetap null.
+Label, alasan, bukti, dan file lama tidak diubah agar mengikuti model. Gabungan
+terbaru beserta snapshot lembar ada pada direktori lokal yang disebut di awal.
+
+[Laporan seluruh cohort](results/2026-11-19T00-31-04Z_673846/report.md) memisahkan
+12 pilot setelah usulan AI terlihat dari 40 pasangan batch 1–4. Pada batch 1–4,
+MiniCheck cocok 30/35 (85,7%), kappa 0,710265, coverage 35/40. Gabungan deskriptif
+seluruh pool cocok 40/45 (88,9%), kappa 0,767322, coverage 45/52. Tujuh input
+terlalu panjang tetap unverified tanpa truncation. Run berstatus incomplete;
+tidak ada API atau request JEV baru.
+
+[Analisis perbedaan](results/2026-11-19T00-31-04Z_673846/failure-analysis.md)
+memuat catatan AI atas lima perbedaan, terpisah dari label/alasan manusia.
+MiniCheck biner tidak mempunyai kelas partial; perbedaan itu tidak dipetakan
+diam-diam menjadi supported. Catatan AI tidak mengubah label manusia atau
+mengisi alasan yang kosong. Volume anotasi mencapai target 50–100 dan kappa
+sudah dihitung, tetapi pool draf satu paper belum menjadi gold benchmark final.
+Korpus lintas paper, gold pertanyaan final, judge generatif sampel, dan evaluasi
+final M6 tetap terbuka.

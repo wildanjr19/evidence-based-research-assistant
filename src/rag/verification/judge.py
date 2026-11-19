@@ -3,10 +3,11 @@ import math
 import random
 from dataclasses import replace
 from typing import Protocol
+from urllib.parse import urlsplit
 
 from rag.config import Config
 from rag.generation.citations import _reject_constant, _unique_object
-from rag.generation.client import CachedLLM, LLMBackend
+from rag.generation.client import CachedLLM, LLMBackend, _api_key
 
 LABELS = {"supported", "partially_supported", "not_supported"}
 
@@ -38,26 +39,48 @@ class Judge:
     def __init__(
         self, config: Config, backend: LLMBackend | None = None, allow_api: bool = False
     ) -> None:
-        self.config = config
         cfg = config.verification
-        # Different providers alone do not prove different families on custom endpoints.
-        if config.generation.base_url or cfg.judge_provider == config.generation.provider:
+        if cfg.judge_provider == "surplus-chat":
+            endpoint = cfg.judge_base_url or _api_key("SURPLUS_API_URL")
+            try:
+                url = urlsplit(endpoint)
+                valid = (
+                    url.scheme == "https"
+                    and url.hostname == "api.surplusintelligence.ai"
+                    and url.port in (None, 443)
+                    and not url.username
+                    and not url.password
+                    and not url.query
+                    and not url.fragment
+                    and url.path.rstrip("/") == "/v1"
+                )
+            except ValueError:
+                valid = False
+            if not valid:
+                raise ValueError("Surplus chat judge requires the Surplus HTTPS /v1 endpoint")
+            cfg = replace(
+                cfg, judge_model=_api_key("GPT_MODEL_ID"), judge_base_url=endpoint.rstrip("/")
+            )
+        self.config = replace(config, verification=cfg)
+        family = "openai" if cfg.judge_provider == "surplus-chat" else cfg.judge_provider
+        # A gateway does not make GPT independent of an OpenAI generator.
+        if config.generation.base_url or family == config.generation.provider:
             raise ValueError(
-                "Judge requires a different model family on standard provider endpoints"
+                "Judge requires a different model family and a known provider endpoint"
             )
         expected = {"openai": ("gpt-", "o1", "o3", "o4"), "deepseek": ("deepseek-",)}
         if not config.generation.model.startswith(expected[config.generation.provider]) or not (
-            cfg.judge_model.startswith(expected[cfg.judge_provider])
+            cfg.judge_model.startswith(expected[family])
         ):
             raise ValueError("Cannot establish independent generator and judge model families")
         judge_config = replace(
-            config,
+            self.config,
             generation=replace(
                 config.generation,
                 provider=cfg.judge_provider,
                 model=cfg.judge_model,
                 thinking=False,
-                base_url="",
+                base_url=cfg.judge_base_url,
                 max_calls_per_run=cfg.judge_max_calls_per_run,
             ),
         )
@@ -78,6 +101,11 @@ class Judge:
             {"role": "user", "content": json.dumps({"claim": claim, "evidence": evidence})},
         ]
         response = self.client.complete(messages)
+        requested = self.config.verification.judge_model
+        if self.config.verification.judge_provider == "surplus-chat" and not (
+            response.model == requested or response.model.startswith(requested + "-")
+        ):
+            raise ValueError("Surplus judge response model differs from GPT_MODEL_ID")
         data = json.loads(
             response.content, object_pairs_hook=_unique_object, parse_constant=_reject_constant
         )

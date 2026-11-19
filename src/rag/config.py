@@ -271,10 +271,15 @@ def load_config(path: str | Path = "configs/config.yaml") -> Config:
         raise ConfigError("verification.device: must be cpu, cuda, or cuda:<index>")
     if not 0 < config.verification.support_threshold < 1:
         raise ConfigError("verification.support_threshold: must be between 0 and 1 exclusive")
-    if config.verification.judge_provider not in {"deepseek", "openai", "surplus"}:
-        raise ConfigError("verification.judge_provider: must be deepseek, openai, or surplus")
-    if config.verification.judge_base_url and config.verification.judge_provider != "surplus":
-        raise ConfigError("verification.judge_base_url: supported only for Surplus decisions")
+    if config.verification.judge_provider not in {"deepseek", "openai", "surplus", "surplus-chat"}:
+        raise ConfigError(
+            "verification.judge_provider: must be deepseek, openai, surplus, or surplus-chat"
+        )
+    if config.verification.judge_base_url and config.verification.judge_provider not in {
+        "surplus",
+        "surplus-chat",
+    }:
+        raise ConfigError("verification.judge_base_url: supported only for Surplus judges")
     if (
         config.retrieval.use_reranker
         and config.retrieval.final_top_k > config.retrieval.rerank_candidates

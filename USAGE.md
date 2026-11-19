@@ -133,7 +133,7 @@ Bobot reranker diunduh ke `paths.cache_dir/models/` pada penggunaan pertama yang
 
 ## Evaluasi retrieval M4
 
-Siapkan JSONL validasi dengan format pertanyaan di [ARCHITECTURE.md](ARCHITECTURE.md#4-skema-data-sqlite). `gold_paper_ids` dan `gold_chunk_ids` harus ada di korpus yang dipakai. Dataset evaluasi final `eval/questions.jsonl` belum tersedia; fixture di `tests/fixtures/retrieval_questions.jsonl` hanya cocok dengan korpus sintetis pada test.
+Siapkan JSONL validasi dengan format pertanyaan di [ARCHITECTURE.md](ARCHITECTURE.md#4-skema-data-sqlite). `gold_paper_ids` dan `gold_chunk_ids` harus ada di korpus yang dipakai. Dataset `eval/questions.jsonl` sudah ditinjau pengguna dan cocok dengan korpus M6 empat paper/236 chunk pada `data/m6-multipaper/20261119T004114Z/`; fixture di `tests/fixtures/retrieval_questions.jsonl` hanya cocok dengan korpus sintetis pada test.
 
 Contoh berikut memakai file validasi yang disiapkan sendiri di `data/validation/questions.jsonl`:
 
@@ -184,8 +184,9 @@ Test dan smoke test M5 memakai LLM mock, tanpa API berbayar. Pengukuran RAM/VRAM
 ## Verifikasi dan evaluasi M6
 
 Gunakan Python `.venv` langsung untuk mempertahankan PyTorch CUDA yang dipasang
-manual. Implementasi verifier/evaluasi tersedia; gold set final, label manusia,
-dan benchmark lengkap M6 masih menunggu. Panduan draf dan anotasi ada di
+manual. Dataset 30 pertanyaan lintas empat paper sudah ditinjau dan disetujui
+pengguna; 52 label manusia dari eksperimen satu paper dilaporkan terpisah.
+Benchmark generation/sitasi dan judge nyata sudah selesai untuk korpus kecil ini. Panduan dataset ada di
 [eval/README.md](eval/README.md).
 
 Runner retrieval lama tetap menjadi default. Untuk retrieval, generation,
@@ -224,12 +225,13 @@ Cache rusak ditolak tanpa dihapus. Hasil yang berhasil disimpan append-only di
 tabel `verification` sesuai skema arsitektur. Kegagalan verifier tercatat pada
 laporan dengan label `null`; jawaban dan klaim tetap tersimpan.
 
-Judge memakai provider standar dari keluarga berbeda: DeepSeek versus OpenAI.
-Endpoint kustom atau identitas keluarga yang tidak dikenali ditolak. Sampel
+Judge memakai keluarga berbeda: DeepSeek versus OpenAI, termasuk GPT melalui
+Surplus dengan provider `surplus-chat`. Endpoint kustom lain atau identitas
+keluarga yang tidak dikenali ditolak. Sampel
 dipilih pada klaim yang memiliki sitasi dengan seed dan kunci stabil qid/ordinal;
 semua pasangan tersitasi pada klaim terpilih dinilai. JSON judge wajib berisi
 label dan alasan. Hasil judge, model yang dilaporkan server, token/cache, dan
-agreement dilaporkan terpisah dari metrik MiniCheck. Judge nyata belum diuji.
+agreement dilaporkan terpisah dari metrik MiniCheck. Judge GPT-4o-mini nyata melalui Surplus dan replay cache sudah diuji pada M6.
 
 Laporan baru berada di `evaluation.output_dir/<run_id>/`, default `eval/results/`,
 berisi metrics, per-question, dan report. Run evaluasi serta run generation
@@ -253,6 +255,32 @@ Untuk menghitung agreement pada 50–100 pasangan berlabel manusia tanpa memangg
 generation/API, gunakan `--stage agreement --annotations <file.jsonl>` sesuai
 panduan anotasi. Label diimpor secara baca-saja; runner tidak mengisi label kosong
 atau memperbaiki gold set secara otomatis.
+
+## GPT judge melalui Surplus
+
+Isi `SURPLUS_API_KEY`, `SURPLUS_API_URL=https://api.surplusintelligence.ai/v1`,
+dan `GPT_MODEL_ID=gpt-4o-mini` di environment atau `.env`. Key OpenAI langsung
+tidak diperlukan. Pada salinan config lengkap, gunakan:
+
+```yaml
+verification:
+  judge_provider: surplus-chat
+  judge_model: gpt-4o-mini
+  judge_base_url: https://api.surplusintelligence.ai/v1
+  judge_max_calls_per_run: 50
+```
+
+Field lain tetap mengikuti config lengkap. `GPT_MODEL_ID` menentukan model
+efektif saat judge dibuat; environment diprioritaskan. Nilai efektif masuk
+config/hash laporan. Gunakan `--stage citations --with-judge`; tanpa
+`--allow-api` cache miss tetap tidak memanggil jaringan. Sebelum memakai flag
+tersebut untuk batch besar, tetapkan dan setujui batas generation/judge.
+
+Jalur ini memakai JSON label dan alasan, berbeda dari Jev. Model respons harus
+sesuai model yang diminta atau snapshot-nya. SDK memakai key Surplus, JSON mode,
+batas output, timeout, dan nol retry. Kontrak endpoint mengikuti
+[Chat Completions Surplus](https://preview.surplusintelligence.ai/docs/api-reference/chat-completions).
+Transport/runner diuji dengan mock dan inference nyata pada M6. Run berbayar memakai 30 request DeepSeek dan 28 judge; replay tanpa `--allow-api` memakai nol request baru. Lihat [laporan M6](eval/results/2026-11-19T01-25-11Z_7492c6/m6-summary.md).
 
 ## Pilot Jev melalui Surplus
 

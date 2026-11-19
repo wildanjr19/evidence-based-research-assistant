@@ -1,0 +1,38 @@
+{
+  "checked_at": "2026-11-19T01:35:45.661342+00:00",
+  "status": "completed_small_benchmark",
+  "paid_http_200_responses": {
+    "deepseek": 30,
+    "surplus": 28
+  },
+  "replay_http_inference_requests": 0,
+  "judge_minicheck_agreement": {
+    "matching": 22,
+    "comparable": 28,
+    "fraction": 0.7857142857142857,
+    "cohens_kappa": 0.0,
+    "judge_supported_labels": 28
+  },
+  "control_multi029_failure_kind": "abstention_schema_contract; no invented kappa value",
+  "initial_powershell_wrapper_exit_code": 1,
+  "initial_powershell_stderr_note": "NativeCommandError wraps INFO model-loading stderr; native Python exit was not separately captured. Runner report status ok, 30 completed, zero failures, and all 58 HTTP responses 200. Cache replay native exit code 0.",
+  "replay_native_exit_code": 0,
+  "pytest": {
+    "passed": 380,
+    "elapsed_seconds": 16.73,
+    "paid_calls": 0
+  },
+  "ruff_lint": "passed",
+  "ruff_format": "passed",
+  "dataset_sha256": "67df3529d67ceabf6770e20ab32871752b3509508052425a7119ed696e9f45d9",
+  "summary_script_sha256": "f6e045419663aee622ea367dc08924b0caa0cce4e86ea253c8fb226b30a496be",
+  "artifact_sha256": {
+    "metrics.json": "3f91786f2f136741cf185b1bbcd8183b85c8a51c0f072f807b568b509b803cdc",
+    "per_question.jsonl": "cf910da3fd236dc9e778da21ad806920404b9315abeeebf3d5dbb2f0dc257888",
+    "report.md": "8ca466fff834b7620fc71900c5afeb53c64eb0d32ca0b82300311c600e2b7ff1",
+    "m6-summary.md": "8167f3a63d38f779178d553f60146cf27b0896dcb5543c995aa1f8aa4253ea7c",
+    "failure-analysis.md": "fe317508966f8e0b1d13c123c7852d7912e0e18e5bf87d2d8e84a8bbce1e33d7",
+    "review-notes.md": "44edef3010a23872db98f3ac4aa0173ddacd709635674f0b50b016dcceef37a0",
+    "validation.json": "7246ce8b56be4ef5c722cd2c2aff8f76fd3e7f6991f3b710c88edbf3381216bf"
+  }
+}

@@ -11,6 +11,7 @@ from rag.indexing.embedding import text_hash
 PROVIDERS = {
     "deepseek": ("https://api.deepseek.com", "DEEPSEEK_API_KEY"),
     "openai": ("https://api.openai.com/v1", "OPENAI_API_KEY"),
+    "surplus-chat": ("https://api.surplusintelligence.ai/v1", "SURPLUS_API_KEY"),
 }
 
 
@@ -73,7 +74,7 @@ class OpenAIBackend:
             "response_format": {"type": "json_object"},
         }
         token_parameter = (
-            "max_tokens" if config.generation.provider == "deepseek" else "max_completion_tokens"
+            "max_completion_tokens" if config.generation.provider == "openai" else "max_tokens"
         )
         parameters[token_parameter] = config.generation.max_output_tokens
         if config.generation.provider == "deepseek":

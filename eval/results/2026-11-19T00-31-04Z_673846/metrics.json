@@ -1,0 +1,248 @@
+{
+  "run_id": "2026-11-19T00:31:04Z_673846",
+  "stage": "batches02_to04_human_agreement",
+  "status": "incomplete",
+  "created_at": "2026-11-19T00:31:04.350948+00:00",
+  "config": {
+    "ingestion": {
+      "query": "(ti:\"retrieval augmented generation\" OR ti:\"retrieval-augmented generation\" OR ti:RAG) AND (ti:evaluation OR ti:benchmark)",
+      "max_papers": 10,
+      "page_size": 10,
+      "request_delay_seconds": 3.0,
+      "timeout_seconds": 30.0,
+      "max_pdf_bytes": 52428800,
+      "allowed_licenses": [
+        "CC-BY-4.0",
+        "CC-BY-3.0",
+        "CC0-1.0"
+      ]
+    },
+    "parsing": {
+      "margin_ratio": 0.08,
+      "repeated_margin_ratio": 0.6,
+      "min_repeated_pages": 2,
+      "heading_max_words": 16
+    },
+    "chunking": {
+      "target_tokens": 400,
+      "overlap_tokens": 50,
+      "min_tokens": 80,
+      "short_chunk_policy": "merge",
+      "tokenizer": "lexical-v1"
+    },
+    "embedding": {
+      "model": "BAAI/bge-base-en-v1.5",
+      "batch_size": 32,
+      "device": "cpu",
+      "revision": "a5beb1e3e68b9ab74eb54cfd186867f64f240e1a",
+      "max_tokens": 512
+    },
+    "retrieval": {
+      "dense_top_k": 50,
+      "bm25_top_k": 50,
+      "rrf_k": 60,
+      "rerank_candidates": 50,
+      "final_top_k": 8,
+      "use_reranker": true,
+      "reranker_model": "BAAI/bge-reranker-base",
+      "query_prefix": "Represent this sentence for searching relevant passages: ",
+      "reranker_revision": "2cfc18c9415c912f9d8155881c133215df768a70",
+      "reranker_max_tokens": 512,
+      "reranker_batch_size": 16
+    },
+    "generation": {
+      "provider": "deepseek",
+      "model": "deepseek-flash",
+      "temperature": 0.0,
+      "max_calls_per_run": 2,
+      "max_output_tokens": 2048,
+      "timeout_seconds": 60.0,
+      "base_url": "",
+      "thinking": false
+    },
+    "verification": {
+      "minicheck_model": "lytang/MiniCheck-Flan-T5-Large",
+      "judge_model": "gpt-4o-mini",
+      "judge_provider": "openai",
+      "judge_sample_rate": 0.25,
+      "seed": 42,
+      "minicheck_revision": "96eafd01cee2d16cf81aaa2fb226b14f422a37b3",
+      "max_tokens": 512,
+      "batch_size": 4,
+      "device": "cpu",
+      "support_threshold": 0.5,
+      "judge_max_calls_per_run": 50,
+      "judge_base_url": ""
+    },
+    "evaluation": {
+      "ks": [
+        5,
+        10,
+        20
+      ],
+      "dataset_path": "D:\\Wildan\\evidence-based-research-assistant\\data\\m6-smoke\\local-verifier-v1\\questions.jsonl",
+      "gold_labels_path": "eval/gold_labels.jsonl",
+      "output_dir": "eval/results"
+    },
+    "paths": {
+      "raw_dir": "data/raw",
+      "parsed_dir": "data/parsed",
+      "index_dir": "D:\\Wildan\\evidence-based-research-assistant\\data\\m6-smoke\\local-verifier-v1\\index",
+      "cache_dir": "data/cache",
+      "db_path": "D:\\Wildan\\evidence-based-research-assistant\\data\\m6-smoke\\local-verifier-v1\\corpus.db"
+    }
+  },
+  "config_hash": "b20b2aba4c9d475ae2588c4eec9a3ddd625b5a54d3bda5c92d175acc089dfbc8",
+  "seed": 42,
+  "model": {
+    "model": "lytang/MiniCheck-Flan-T5-Large",
+    "revision": "96eafd01cee2d16cf81aaa2fb226b14f422a37b3",
+    "max_tokens": 512,
+    "device": "cpu",
+    "threshold": 0.5,
+    "adapter": "minicheck-flan-t5-pair-v1-no-truncation",
+    "backend": "rag.verification.minicheck.MiniCheck"
+  },
+  "python_version": "3.11.0 (main, Oct 24 2022, 18:26:48) [MSC v.1933 64 bit (AMD64)]",
+  "library_versions": {
+    "torch": "2.15.0+cu132",
+    "transformers": "5.23.0",
+    "pyyaml": "6.0.3"
+  },
+  "new_annotation_count": 30,
+  "cumulative_unique_human_pairs": 52,
+  "manual_labels_path": "data/annotations/batches02-04-2026-11-19T00-31-04Z_673846/human-batches02-04.jsonl",
+  "cumulative_labels_path": "data/annotations/batches02-04-2026-11-19T00-31-04Z_673846/human-labels.jsonl",
+  "manual_labels_sha256": "18650234770755ff7d3854508de6eb9aa156ebf4b4cd5b37b060679f806debd9",
+  "cumulative_labels_sha256": "1a7d8f866a5b346a0c030f47bf9c32fe3cae369c20b24b03bf84b7d6cfc5f560",
+  "new_label_distribution": {
+    "not_supported": 14,
+    "partially_supported": 2,
+    "supported": 14
+  },
+  "all_label_distribution": {
+    "supported": 22,
+    "not_supported": 27,
+    "partially_supported": 3
+  },
+  "missing_rationale_ids": [
+    "m6-remaining-04",
+    "m6-remaining-21",
+    "m6-remaining-22",
+    "m6-remaining-26",
+    "m6-remaining-27",
+    "m6-remaining-29",
+    "m6-remaining-30",
+    "m6-remaining-31",
+    "m6-remaining-32",
+    "m6-remaining-33",
+    "m6-remaining-36",
+    "m6-remaining-39",
+    "m6-remaining-40"
+  ],
+  "cohort_metrics": {
+    "pilot_ai_assisted": {
+      "annotation_count": 12,
+      "evaluated_pairs": 10,
+      "unverified_pairs": 2,
+      "coverage": 0.8333333333333334,
+      "matches": 10,
+      "exact_agreement": 1.0,
+      "cohens_kappa": 1.0
+    },
+    "batch01": {
+      "annotation_count": 10,
+      "evaluated_pairs": 7,
+      "unverified_pairs": 3,
+      "coverage": 0.7,
+      "matches": 7,
+      "exact_agreement": 1.0,
+      "cohens_kappa": 1.0
+    },
+    "batch02": {
+      "annotation_count": 10,
+      "evaluated_pairs": 8,
+      "unverified_pairs": 2,
+      "coverage": 0.8,
+      "matches": 6,
+      "exact_agreement": 0.75,
+      "cohens_kappa": 0.38461538461538464
+    },
+    "batch03": {
+      "annotation_count": 10,
+      "evaluated_pairs": 10,
+      "unverified_pairs": 0,
+      "coverage": 1.0,
+      "matches": 8,
+      "exact_agreement": 0.8,
+      "cohens_kappa": 0.6226415094339623
+    },
+    "batch04": {
+      "annotation_count": 10,
+      "evaluated_pairs": 10,
+      "unverified_pairs": 0,
+      "coverage": 1.0,
+      "matches": 9,
+      "exact_agreement": 0.9,
+      "cohens_kappa": 0.8
+    },
+    "batches01_to04": {
+      "annotation_count": 40,
+      "evaluated_pairs": 35,
+      "unverified_pairs": 5,
+      "coverage": 0.875,
+      "matches": 30,
+      "exact_agreement": 0.8571428571428571,
+      "cohens_kappa": 0.7102649006622516
+    },
+    "all_pairs_descriptive": {
+      "annotation_count": 52,
+      "evaluated_pairs": 45,
+      "unverified_pairs": 7,
+      "coverage": 0.8653846153846154,
+      "matches": 40,
+      "exact_agreement": 0.8888888888888888,
+      "cohens_kappa": 0.7673216132368148
+    }
+  },
+  "input_hashes": {
+    "data/m6-smoke/local-verifier-v1/config.yaml": "9f3e78300017998e7a16de3ea17a6152c8136c11f1f9a6238261ff34addb5486",
+    "D:/Wildan/evidence-based-research-assistant/data/m6-smoke/local-verifier-v1/corpus.db": "191eca500cd23df0492973eae2dbccbcbbfab95df8df4f890f98860f29366676",
+    "data/annotations/batch01-2026-11-18T15-34-19Z_111f6f/human-labels.jsonl": "7ce2ccda7756169bf58c126e103a225bf724b6b409d8ea92602ea52e5d8792cb",
+    "eval/results/2026-11-18T15-17-53Z_8e261f/per_pair.jsonl": "47d3669f9a5c1adf1f63464009b065ee3fc7637e7c62e7e0b2b6207c64076b0f",
+    "eval/results/2026-11-18T15-34-19Z_111f6f/per_pair.jsonl": "8640d32b09ed0909d0b49cec5a7a5832cffc02084f8096ff6a078747ad14d711",
+    "data/m6-smoke/local-verifier-v1/reference-annotations.jsonl": "1dba7bb7e6d0ae22f09cd0836739c2544c914cb2f3cdabe061a79a183ba36ad5",
+    "eval/questions.draft-v1.jsonl": "a6fc480fc37dd1e2d101030575f1a728f0e3b149b3e53f47b94dd3fda8f0c820",
+    "D:/Wildan/evidence-based-research-assistant/data/jev-smoke/surplus-jev-v1/import-batches02-04-v1.py": "0336309b16a8bb19c89fa1de81023c21bd2570a222242cbea0aa19d1c0a4706b",
+    "data/annotations/m6-review-20261118T150117399425Z/remaining-02.jsonl": "c0b4e5915b410890fa4034893712f5f06b5f6a1364b16be7ed03831e903199b4",
+    "data/annotations/m6-review-20261118T150117399425Z/remaining-02.md": "4a5b772f2a9f449e7dcdba817c585ddb1a9ae36c31ec19326bc5c206c208c36e",
+    "data/annotations/m6-review-20261118T150117399425Z/remaining-03.jsonl": "b371e8868cb4d78820f4e61cfea16f3a25312fa620f5d48d41d93021f961afac",
+    "data/annotations/m6-review-20261118T150117399425Z/remaining-03.md": "167bdce8a7f7279203fcbc4970d382336f93f87eb9b1e3811112b5dff7e1a98e",
+    "data/annotations/m6-review-20261118T150117399425Z/remaining-04.jsonl": "4b6a67248fca4f57767247f6de1e918e42998b26fb07d54f2be4b63c8feb649b",
+    "data/annotations/m6-review-20261118T150117399425Z/remaining-04.md": "0e6843c76258cee3a924b0577afd4ad04532f2c637d47be413061adf290c3533"
+  },
+  "source_files_unchanged": true,
+  "verifier_computed_pairs": 28,
+  "verifier_cache_hits": 0,
+  "paid_api_calls": 0,
+  "new_jev_requests": 0,
+  "remaining_unlabeled_pairs": 0,
+  "numeric_annotation_target_met": true,
+  "eligible_for_final_gold": false,
+  "resources": {
+    "peak_working_set_bytes": 4058779648,
+    "peak_private_commit_bytes": 6326345728,
+    "cuda_initialized": false,
+    "peak_torch_allocated_bytes": 0,
+    "peak_torch_reserved_bytes": 0,
+    "scope": "Current Python process lifetime; PyTorch allocator only for VRAM"
+  },
+  "limitations": [
+    "All 52 pairs are AI draft references from one paper, not benchmark generation.",
+    "Twelve pilot pairs were reviewed after model results and AI suggestions were visible.",
+    "Forty other worksheets hid verifier predictions; prior exposure to claims is possible.",
+    "Missing rationales remain null; partial labels may need supported-subset clarification.",
+    "Correlated claims/chunks and one annotator limit generalization; no gold promotion.",
+    "Overlength inputs remain unverified without truncation; no new Jev/API requests."
+  ]
+}

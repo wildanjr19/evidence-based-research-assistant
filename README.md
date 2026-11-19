@@ -2,7 +2,7 @@
 
 Asisten riset literatur ilmiah yang dirancang untuk menjawab pertanyaan dengan bukti yang bisa ditelusuri sampai ke paper, halaman, dan kutipan aslinya.
 
-Proyek ini memakai Retrieval-Augmented Generation (RAG): sistem mengambil potongan teks (chunk) dari korpus, lalu menyusun jawaban berdasarkan bukti tersebut. Setiap klaim wajib memiliki sitasi chunk yang valid atau diberi label "tidak ada bukti". Ketepatan sitasinya akan diukur melalui evaluasi.
+Proyek ini memakai Retrieval-Augmented Generation (RAG): sistem mengambil potongan teks (chunk) dari korpus, lalu menyusun jawaban berdasarkan bukti tersebut. Setiap klaim wajib memiliki sitasi chunk yang valid atau diberi label "tidak ada bukti". Ketepatan sitasinya diukur melalui evaluasi.
 
 ## Ruang lingkup
 
@@ -22,9 +22,9 @@ Stack utama: Python, PyMuPDF, BGE, LanceDB, dan SQLite FTS5. UI direncanakan mem
 
 ## Status
 
-**M0 sampai M5 sudah diimplementasikan:** ingestion, parsing, chunking, indexing, retrieval dengan reranker opsional, evaluasi retrieval, serta generasi JSON klaim dengan validasi sitasi dan cache respons.
+**M0 sampai M6 selesai untuk benchmark awal:** ingestion, parsing, chunking, indexing, retrieval, generation bersitasi, MiniCheck lokal, dan judge generatif GPT-4o-mini melalui Surplus.
 
-Retrieval dengan embedding/reranker nyata diuji pada satu paper di CPU; generasi diuji dengan LLM mock dan satu pertanyaan melalui DeepSeek Flash API nyata. M6 sedang berjalan: MiniCheck lokal dan runner evaluasi sitasi tersedia, termasuk eksperimen judge keputusan Jev melalui Surplus. UI, korpus final, gold set manual, dan benchmark lengkap belum tersedia. Hasil verifikasi ada di [TASKS.md](TASKS.md).
+Dataset yang ditinjau pengguna berisi 30 pertanyaan lintas empat paper berlisensi, dengan 236 chunk. [Laporan M6](eval/results/2026-11-19T01-25-11Z_7492c6/m6-summary.md) memuat hasil, biaya estimasi, pengulangan dari cache, serta analisis kegagalan. Label manusia 52 pasangan dari eksperimen satu paper dilaporkan terpisah; accuracy terhadap manusia pada klaim generation baru belum diukur. UI M7, target korpus 100–500 paper, dan inference model di GPU belum dikerjakan. Catatan verifikasi dan handoff ada di [TASKS.md](TASKS.md).
 
 Pilot [Jev dibandingkan dengan MiniCheck](eval/results/2026-11-18T11-50-46Z_ad072b/report.md)
 memeriksa 12 pasangan kandidat klaim–chunk dari satu paper. Jev menjawab seluruh

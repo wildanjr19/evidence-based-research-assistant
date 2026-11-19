@@ -193,10 +193,17 @@ RAM mencakup proses Python lokal, bukan RAM model LLM di server. CUDA tidak diin
 
 **Deliverable:** MiniCheck lokal, LLM-judge sampel, dataset 30–50 pertanyaan, skrip evaluasi, laporan run pertama.
 
-**Status: berjalan (2026-11-18).** Sesuai arahan pengguna, sesi ini menyiapkan
-jalur evaluasi dan bahan anotasi karena korpus beberapa paper serta label manusia
-belum tersedia. M6 belum ditutup. Implementasi/test dan smoke test nyata tersedia;
-gold set final, judge API nyata, dan kesepakatan terhadap manusia tetap menunggu.
+**Status: ditutup untuk benchmark kecil (2026-11-19).** Empat paper/236 chunk,
+30 pertanyaan ditinjau pengguna, generation DeepSeek, MiniCheck CPU, dan judge
+GPT-4o-mini melalui Surplus selesai. Semua pertanyaan diproses; tidak ada
+pasangan unverified atau generation gagal. Hasil identik saat diulang tanpa API.
+Laporan final ada di `eval/results/2026-11-19T01-25-11Z_7492c6/m6-summary.md`.
+
+Volume 52 anotasi referensi dan kappa terpenuhi sebagai cohort validasi terpisah;
+12 pilot terpapar usulan AI dan 40 batch lain tetap dilaporkan dengan coverage.
+Label lama bukan gold klaim generation baru; accuracy manusia pada benchmark
+jawaban baru belum diukur. Penutupan ini memenuhi deliverable M6 pertama,
+belum target korpus v1 100-500 paper, inference GPU, atau UI M7.
 
 **Verifikasi repo sebelum Jev:** 328 test lulus melalui `.venv/Scripts/python.exe -m pytest -q`;
 Ruff lint/format dan `git diff --check` bersih. Sebanyak 39 test baru mencakup
@@ -214,13 +221,13 @@ atau cleanup di luar lingkup M6. Gate visual tidak berlaku karena UI tidak diuba
 
 **Acceptance criteria:**
 
-- [ ] Dataset uji punya gold paper + gold chunk, dan tidak diubah setelah run pertama tanpa dicatat sebagai versi baru.
-- [ ] Dataset memuat campuran lookup, comparison, synthesis, dan unanswerable (~10–15%), dengan jumlah per tipe dilaporkan.
-- [ ] Pertanyaan unanswerable dinilai benar bila sistem menolak menjawab; klaim yang tetap muncul dihitung gagal.
+- [x] Dataset uji punya gold paper + gold chunk, dan tidak diubah setelah run pertama tanpa dicatat sebagai versi baru.
+- [x] Dataset memuat campuran lookup, comparison, synthesis, dan unanswerable (~10–15%), dengan jumlah per tipe dilaporkan.
+- [x] Pertanyaan unanswerable dinilai benar bila sistem menolak menjawab; klaim yang tetap muncul dihitung gagal.
 - [x] ID model MiniCheck diverifikasi ke Hugging Face sebelum dipakai, bukan diasumsikan dari nama di config.
 - [x] Metrik di `ARCHITECTURE.md` §9 dihitung otomatis dan ditulis ke `eval/results/<run_id>/` (agreement manusia null sampai label tersedia; perhitungannya diuji dengan fixture).
 - [x] Laporan mencantumkan `run_id`, `config_hash`, versi model, seed, jumlah pertanyaan.
-- [ ] Label manual 50–100 pasangan klaim-chunk tersedia dan Cohen's kappa dihitung.
+- [x] Label manual 50–100 pasangan klaim-chunk tersedia dan Cohen's kappa dihitung (52 pasangan draf; batch 1–4: kappa 0,710265 pada 35/40 input yang dapat dinilai; belum gold final).
 
 **Implementasi awal M6:** verifier lokal memakai Transformers/PyTorch yang sudah
 terpasang, tanpa dependensi baru atau perubahan lockfile/CUDA. ID
@@ -508,6 +515,270 @@ Tidak ada API tambahan atau inference model lokal; penilaian AI dilakukan oleh
 Codex dalam percakapan ini. RAM proses penyimpanan/validasi puncak 17,27 MiB
 working set / 9,00 MiB private commit; VRAM allocator PyTorch 0 byte, CUDA tidak
 diinisialisasi. Ini resource skrip penyimpanan, bukan memori inference Codex.
+
+### Paket tinjauan lanjutan M6 (2026-11-18)
+
+Empat usulan berbeda dari label manusia v2 diperiksa terhadap chunk kanonis:
+row-08, row-02, dan row-18 tidak memiliki bukti untuk detail klaim; row-35 hanya
+mendukung klausa reference-based. Hasil tetap usulan AI N/N/N/P, bukan label
+manusia baru. Pengguna diminta menilai masing-masing setelah membaca bukti.
+
+Paket lokal `data/annotations/m6-review-20261118T150117399425Z/` memuat
+`confirm-four.md`/JSONL dengan bukti lengkap dan empat batch `remaining-01`
+sampai `remaining-04`, masing-masing sepuluh pasangan. Empat puluh pasangan itu
+unik dan tidak tumpang tindih dengan 12 pasangan pilot; urutannya diacak dengan
+seed 42, tanpa prediksi verifier pada lembar atau JSONL. Semuanya tetap dari
+draf referensi satu paper. Empat konfirmasi adalah tinjauan ulang, sehingga
+tidak menambah jumlah pasangan unik. Tidak ada klaim studi blind atau promosi
+otomatis ke gold final.
+
+Skrip lokal `data/jev-smoke/surplus-jev-v1/prepare-next-review.py` memeriksa
+52 pasangan sumber, hash/teks chunk kanonis, pengeluaran pasangan pilot dari
+batch baru, dan kolom label/annotator yang tetap null. Manifest paket mencatat
+urutan, seed, serta hash input/output. Label manusia v1/v2, lembar adjudikasi,
+usulan AI lama, database, dan draf pertanyaan dipertahankan. Tidak ada API baru,
+inference model lokal, dependensi baru, perubahan skema, atau perubahan UI.
+
+**Verifikasi paket:** 44 item cocok dengan chunk kanonis; sembilan hash input
+dan sebelas hash output tetap cocok. Lima template JSONL berlabel null ditolak
+loader manusia, sedangkan 12 label pilot v2 tetap valid. Pengujian memakai
+Python `.venv` langsung: 369 test lulus; Ruff lint/format repo serta skrip lokal
+bersih, dan `git diff --check` bersih. Paket dan skrip diabaikan Git; perubahan
+tracked hanya dokumentasi. Antislop-code PASS: tidak menambah atau mengubah
+komentar kode. Gate visual tidak berlaku karena tidak ada perubahan UI.
+
+**Handoff:** isi lembar sebagai berkas baru dengan label S/P/N, anotator, serta
+alasan per pasangan. Untuk P, sebutkan bagian klaim yang didukung dan yang
+hilang. Impor dan hitung ulang agreement hanya setelah label manusia tersedia;
+jangan memasukkan usulan AI sebagai anotasi manusia. Panduan paket ada di
+`eval/README.md`. Perluasan korpus, gold pertanyaan final, target 50–100 label
+manusia, judge generatif sampel, dan benchmark final M6 tetap terbuka.
+
+### Impor tinjauan empat kasus manusia (2026-11-18)
+
+Pengguna mengisi `confirm-four.md` dengan N untuk row-08, row-02, row-18, serta
+P untuk row-35. Empat revisi dan alasan asli disimpan di
+`data/jev-smoke/surplus-jev-v1/human-labels-v3.jsonl`; label v1/v2 tetap utuh.
+Kolom anotator pada lembar kosong; identitas `chat-user` diteruskan dari versi
+sebelumnya karena pengguna menyatakan mengerjakannya sendiri. Provenance ini
+dicatat eksplisit. Alasan row-35, "Setuju dengan alasan AI", dipertahankan dan
+ditandai sebagai adopsi penjelasan AI, bukan alasan independen buatan manusia.
+Salinan lembar terisi disimpan sebagai `human-confirm-four-completed-v1.md`.
+
+Dua belas label pilot kini empat S, satu P, tujuh N. Run
+`eval/results/2026-11-18T15-17-53Z_8e261f/` memakai prediksi lama: Jev cocok
+12/12 (kappa 1,0), MiniCheck 10/10 (kappa 1,0; coverage 10/12). Dua input panjang
+tetap unverified. Empat tinjauan tidak menambah pasangan unik; jumlah pilot
+tetap 12. Ini agreement setelah usulan AI terlihat, bukan validasi independen
+atas accuracy model atau gold final. Empat puluh pasangan tersisa belum dilabeli;
+target M6 dan benchmark lintas paper tetap terbuka.
+
+Skrip lokal `score-human-v3.py` memvalidasi isian, identitas pasangan, teks/hash
+kanonis, serta impor dengan loader manusia. `validation.json` pada run baru
+mencatat pemeriksaan hash input, preservasi alasan, dan hitungan ulang agreement
+secara terpisah. Snapshot skrip yang dieksekusi disimpan lokal; perubahan format
+setelah eksekusi diverifikasi mempunyai AST identik. Tidak ada API, inference
+model, perubahan database/indeks, atau perubahan gold final. RAM proses scoring
+puncak 25,49 MiB working set / 17,52 MiB private commit; CUDA tidak diinisialisasi,
+allocator VRAM PyTorch 0 byte. Angka ini hanya proses scoring lokal.
+
+Verifikasi melalui Python `.venv`: 369 test lulus; Ruff lint/format repo dan
+skrip lokal bersih. Antislop-code PASS: tidak menambah atau mengubah komentar;
+gate visual tidak berlaku karena tidak ada perubahan UI. Langkah berikutnya:
+isi `remaining-01.md`, lalu tiga batch lain, masing-masing dengan penilaian dan
+alasan manusia sebelum melihat prediksi verifier.
+
+### Anotasi manusia batch 1 (2026-11-18)
+
+Pengguna mengisi sembilan pasangan pada `remaining-01.md` dan memberi label N
+untuk item `m6-remaining-04` melalui balasan chat setelah ditanya tentang item
+yang kosong. Alasan item 04 tidak diberikan dan tetap null; sembilan alasan
+lain dipertahankan persis. Anotator `chat-user` diteruskan dari identitas
+sebelumnya, dengan provenance eksplisit karena kolom anotator lembar kosong.
+Batch berisi empat S dan enam N. Tidak ada label yang diganti mengikuti model.
+
+Sepuluh pasangan baru disimpan pada
+`data/annotations/batch01-2026-11-18T15-34-19Z_111f6f/human-batch01.jsonl`.
+Direktori yang sama memuat snapshot lembar, balasan chat N, dan
+`human-labels.jsonl` berisi 22 pasangan unik: 12 pilot v3 ditambah 10 batch 1.
+Label lama dan template tidak ditimpa. Tiga batch lain (30 pasangan) belum
+dilabeli. Semua pasangan masih berasal dari draf referensi satu paper, belum
+menjadi gold final atau keluaran generation benchmark.
+
+Run `eval/results/2026-11-18T15-34-19Z_111f6f/` memakai MiniCheck nyata di CPU
+dengan pemuatan bobot offline. Tujuh pasangan dihitung baru, nol cache hit;
+seluruh tujuh prediksi cocok dengan manusia (kappa 1,0 pada subset comparable).
+Coverage 7/10; item 03, 04, dan 06 ditolak sebelum forward karena batas token
+512, tanpa truncation. Run berstatus incomplete. Hasil batch dilaporkan
+terpisah dari pilot yang sudah melihat usulan AI. Tidak ada request JEV,
+generation, atau API berbayar.
+
+Skrip lokal `data/jev-smoke/surplus-jev-v1/import-batch01-v1.py` memvalidasi
+identitas pasangan, bukti kanonis, isian manusia, dan impor dengan loader.
+`validation.json` pada run mencatat 12 hash input yang tetap sama, validasi 22
+label, versi library/config hash, hitungan ulang agreement, serta replay tujuh
+prediksi dari cache dengan nol inference tambahan. Database, draf pertanyaan,
+label pilot, dan batch 2–4 tetap utuh. RAM proses verifier puncak 3,78 GiB working
+set / 5,82 GiB private commit; CUDA tidak diinisialisasi, allocator VRAM PyTorch
+0 byte. Ini memori proses lokal, bukan pemakaian seluruh sistem.
+
+Verifikasi memakai Python `.venv` langsung: 369 test lulus; Ruff lint/format
+repo dan skrip lokal serta `git diff --check` bersih. Label dan snapshot lembar
+tetap di `data/` yang diabaikan Git; hasil publik tidak menyalin chunk lengkap.
+
+Langkah berikutnya: isi `remaining-02.md` dengan label dan alasan manusia.
+Target 50–100 label, korpus lintas paper, judge generatif sampel, dan benchmark
+final M6 tetap terbuka. Antislop-code PASS: tidak ada komentar baru atau cleanup
+di luar lingkup; gate visual tidak berlaku karena UI tidak diubah.
+
+### Anotasi manusia batch 2–4 (2026-11-19)
+
+Pengguna menyelesaikan 30 label pada `remaining-02.md` sampai `remaining-04.md`.
+Semua label dan alasan dipertahankan; alasan kosong tetap null. Identitas
+`chat-user` diteruskan dengan provenance eksplisit dari konfirmasi pengguna dan
+label sebelumnya karena kolom anotator kosong. Batch baru berisi 14 S, 2 P,
+14 N. Pool kumulatif kini 52 pasangan unik: 22 S, 3 P, 27 N. Tiga belas alasan
+masih kosong, termasuk satu pada batch 1. Seluruh bahan berasal dari satu paper
+dan klaim referensi draf AI; tidak dipromosikan otomatis menjadi gold final.
+
+Label baru, gabungan 52 label, dan snapshot ketiga lembar tersimpan pada
+`data/annotations/batches02-04-2026-11-19T00-31-04Z_673846/`. Label sebelumnya
+tetap utuh. Skrip lokal `data/jev-smoke/surplus-jev-v1/import-batches02-04-v1.py`
+memvalidasi isian, identitas pasangan, serta bukti/hash SQLite kanonis sebelum
+verifikasi MiniCheck nyata di CPU dengan pemuatan model offline. Sebanyak 28
+pasangan dihitung baru, nol cache hit; dua input baru melebihi batas token.
+Tidak ada generation, API berbayar, atau request JEV baru.
+
+Run baru: `eval/results/2026-11-19T00-31-04Z_673846/`.
+
+| Cohort | Cocok / dinilai | Coverage | Cohen's kappa |
+|---|---|---|---|
+| Batch 2 | 6/8 | 8/10 | 0,384615 |
+| Batch 3 | 8/10 | 10/10 | 0,622642 |
+| Batch 4 | 9/10 | 10/10 | 0,800000 |
+| Batch 1–4 | 30/35 (85,7%) | 35/40 | 0,710265 |
+| Semua, termasuk pilot setelah usulan AI terlihat | 40/45 (88,9%) | 45/52 | 0,767322 |
+
+Run tetap incomplete: tujuh pasangan keseluruhan unverified karena batas 512
+token, tanpa truncation. Lima perbedaan pada batch 1–4 tetap disimpan apa adanya.
+`failure-analysis.md` berisi catatan AI terpisah tentang dukungan sebagian,
+kandidat kesalahan verifier, dan keterbatasan tiga kelas manusia versus verifier
+biner. Catatan itu tidak mengisi alasan manusia yang kosong atau mengganti label.
+Pilot setelah melihat usulan AI dipisahkan dari 40 pasangan lainnya; agreement
+gabungan bukan accuracy independen atau benchmark lintas paper.
+
+`validation.json` mencatat 14 hash input yang tetap sama, validasi 52 label,
+preservasi 22 label lama dan alasan, hitungan ulang seluruh metrik cohort, serta
+replay 45 prediksi dari cache dengan nol inference tambahan. Hasil publik tidak
+menyalin chunk lengkap. RAM verifier puncak 3,78 GiB working set / 5,89 GiB
+private commit; CUDA tidak diinisialisasi, allocator VRAM PyTorch 0 byte. Ini
+memori proses lokal, bukan seluruh sistem.
+
+Verifikasi melalui Python `.venv`: 369 test lulus; Ruff lint/format repo dan
+skrip lokal bersih. Antislop-code PASS: tidak ada komentar baru atau cleanup
+di luar lingkup; gate visual tidak berlaku karena UI tidak diubah.
+
+**Handoff:** volume anotasi 50–100 serta perhitungan kappa sudah tersedia.
+Berikutnya finalisasi korpus lintas paper dan gold pertanyaan sebelum benchmark
+generation/sitasi serta sampel judge generatif. Pertahankan label manusia dan
+hasil lama; jangan menyetel dataset, threshold, atau label dari skor ini. Batas
+batch API baru harus ditetapkan terpisah. M6 tetap terbuka.
+
+### Korpus lintas paper dan persiapan judge generatif (2026-11-19)
+
+Empat paper CC-BY-4.0 lolos pemeriksaan dari batas awal 10 kandidat: Deepchecks,
+Chemistry, LegalBench-RAG, dan MIRAGE. Korpus terpisah memuat 66 halaman dan
+236 chunk; embedding CPU menghasilkan 236 vektor/FTS5. Chunk target 220 token
+leksikal dipilih sebelum indexing/evaluasi untuk menyisakan ruang input MiniCheck.
+Korpus lama, label manusia, dan draf lama dipertahankan dengan hash yang sama.
+Ini benchmark kecil M6, belum target v1 100–500 paper.
+
+Pengguna meninjau dan menyetujui draf lintas paper v1 melalui chat. Dataset
+`eval/questions.jsonl` memuat 12 lookup, 8 comparison, 6 synthesis lintas paper,
+dan 4 unanswerable (30 total). SHA-256:
+`67df3529d67ceabf6770e20ab32871752b3509508052425a7119ed696e9f45d9`.
+Isinya tidak berubah dari pembekuan sebelum retrieval; persetujuan manusia
+terjadi setelah retrieval awal. Manifest `eval/questions.reviewed-v1.manifest.json`
+mencatat provenance AI dan persetujuan manusia. Konflik total QA LegalBench
+dicatat dan dikeluarkan dari pertanyaan sebelum pembekuan.
+
+Empat mode retrieval selesai. Pengulangan offline mempunyai ranking, skor, dan
+metrik identik; reranker memakai 1.500 cache hit dan nol pasangan baru. BM25
+tertinggi pada Recall@5/@20, hybrid pada Recall@10, hybrid+rerank pada MRR.
+Mode sitasi utama hybrid+rerank sudah ditetapkan sebelum hasil diketahui.
+Nilai dan delapan ID run ada di `eval/m6-multipaper-readiness-20261119.md`.
+
+Pengguna menyediakan `GPT_MODEL_ID=gpt-4o-mini` dari Surplus. Katalog GET
+mengenali model tersebut; nol inference berbayar pada tahap persiapan.
+`judge_provider: surplus-chat` memakai key Surplus dan endpoint HTTPS `/v1`,
+serta mempertahankan label dan alasan generatif. Jalur Jev tetap terpisah.
+Model/endpoint efektif masuk config/hash; model respons harus sesuai permintaan
+atau snapshot-nya. Generator OpenAI tidak dianggap independen dari GPT melalui
+gateway. Tidak ada dependensi, perubahan skema SQLite, format sitasi, atau UI.
+
+**Verifikasi:** 380 test lulus; Ruff lint/format dan `git diff --check` bersih.
+Sebelas test baru mencakup transport SDK dengan key `.env`, token, model,
+endpoint ditolak, cache, batas request, HTTP 500 tanpa retry, independensi
+keluarga, serta integrasi runner/replay. Test tidak memakai API berbayar.
+Antislop-code PASS: komentar menjelaskan batas independensi keluarga model;
+tidak ada cleanup di luar lingkup. Gate visual tidak berlaku.
+
+**Langkah berikutnya:** proposal lokal
+`data/m6-multipaper/20261119T004114Z/judge-and-api-plan-surplus-gpt-v1.md`
+menetapkan maksimum 60 request DeepSeek dan 50 judge Surplus, output maksimum
+2.048 token, sampel 25%, seed 42, tanpa retry transport. Estimasi sekitar
+US$0,54, bukan meter batas dolar. Persetujuan dataset tidak dianggap izin
+batch berbayar; batch belum disetujui/dijalankan. Setelah izin, jalankan
+generation/sitasi, periksa coverage/kegagalan dan kontrol unanswerable, ulangi
+tanpa API, lalu tulis analisis kegagalan. M6 tetap terbuka sampai hasil tersedia.
+
+### Run final M6 dan penutupan (2026-11-19)
+
+Pengguna mengizinkan batch setelah menetapkan harga GPT-4o-mini Surplus
+US$0,027/juta input dan US$0,11/juta output; DeepSeek mengikuti harga resmi.
+Izin, hash kode/config/dataset, serta batas 60 generation/50 judge tercatat pada
+`data/m6-multipaper/20261119T004114Z/api-authorization-surplus-gpt-v1.json`.
+Config eksekusi adalah `config-citations-surplus-gpt-authorized-v1.yaml` pada
+direktori tersebut. Seluruh artefak persiapan dan usulan lama dipertahankan.
+
+Run `2026-11-19T01-25-11Z_7492c6` selesai pada 30 pertanyaan, 101 klaim, dan
+109 pasangan sitasi. MiniCheck memberi 94 supported dan 15 not_supported;
+tidak ada input overlength/unverified atau generation gagal. Precision sitasi
+86,24%, recall/faithfulness 88,12%, hallucinated citation rate 0%, abstention
+accuracy 75% (3/4). Recall di implementasi ini mengukur proporsi klaim yang
+didukung, bukan recall seluruh fakta referensi.
+
+Kontrol multi029 menolak memberi angka kappa, tetapi menulis penolakannya
+sebagai satu klaim unsupported tanpa sitasi. Kontrak mengharuskan `claims: []`;
+skor tetap gagal sesuai protokol. Tidak ada normalisasi respons, perubahan
+label/gold, atau prompt ulang untuk menaikkan hasil. Tiga kontrol lain kosong.
+
+Sampel seed 42 menghasilkan 28 pasangan judge, semuanya berlabel supported.
+Agreement MiniCheck/judge 22/28 (78,57%), kappa 0; distribusi satu kelas judge
+membatasi interpretasinya. Pembacaan sumber pada enam ketidaksepakatan
+menunjukkan kandidat masalah tabel/kolom PDF, pemenggalan kata, atau konteks
+heading terpotong. Catatan ini bukan label manusia baru; metrik tidak diganti.
+
+Penggunaan aktual: 30 request DeepSeek, 87.561 token input/5.865 output;
+28 request Surplus, 10.521 input/1.565 output; tidak ada retry format atau usage
+yang hilang. Estimasi token total US$0,033763 memakai harga judge pengguna
+dan DeepSeek peak cache-miss (konservatif, diskon cache belum dihitung), bukan
+tagihan provider. Durasi 262,66 detik; peak working set sekitar 4,35 GiB,
+private commit 6,35 GiB; CUDA tidak diinisialisasi, VRAM allocator 0.
+
+Replay `2026-11-19T01-31-11Z_75bb36` selesai dalam 27,67 detik: 30 cache hit
+generation, 28 judge, dan 109 verifier; nol request API dan nol inference
+verifier baru. Ranking, klaim, label/score/rationale, sample keys, dan metrik
+identik. Hash tabel paper/chunk, empat input lama yang dilindungi, serta dataset
+tetap sama; integrity/foreign key check SQLite bersih. Teks chunk lengkap dan
+secret tidak ditemukan pada `eval/`.
+
+380 test lulus dalam 16,73 detik; Ruff lint/format bersih. Laporan final,
+analisis kegagalan, catatan interpretasi, dan validasi berada pada direktori run
+berbayar. Label manusia 52 pasangan tetap cohort referensi terpisah; tidak ada
+label manusia langsung yang cocok dengan klaim generation baru, sehingga kappa
+manusia pada run baru tetap null. Target 100–500 paper dan inference GPU belum
+diuji. **Agenda berikutnya M7: UI Streamlit dan dokumentasi demo.**
 
 ## M7 — UI dan dokumentasi
 
