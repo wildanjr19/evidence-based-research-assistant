@@ -311,14 +311,35 @@ membuat salinan SQLite baru di `paths.cache_dir/ui-runs/<run_id>/`; retrieval
 membaca salinan itu dan indeks asli. Generation/verifikasi menulis hanya ke
 salinan dan laporan baru di direktori tersebut. Model dan cache tetap mengikuti
 config. Retrieval dan MiniCheck dapat memuat bobot lokal atau mengunduhnya bila
-belum tersedia. UI tidak menyediakan flag `allow_api`, tidak menjalankan judge,
-dan tidak mengirim request LLM berbayar. Cache LLM yang belum tersedia menjadi
-status gagal; hasil retrieval kosong menjadi "tidak ada bukti". Kegagalan
-verifier tetap mempertahankan jawaban dengan label belum diverifikasi.
+belum tersedia. Default UI hanya membaca cache LLM. Untuk membuat jawaban baru,
+centang **Izinkan API berbayar saat cache kosong**, lalu klik **Cari bukti**.
+Izin berlaku pada setiap submit selama checkbox aktif; rerun widget tidak
+mengulang generation. Batas keras dua percobaan per submit mengikuti nilai
+terendah antara dua dan `generation.max_calls_per_run`, termasuk koreksi format.
+Retry transport tetap nol. Model, thinking, timeout, dan batas output mengikuti
+config; UI menampilkan model/provider dan batas token sebelum submit. Pertanyaan
+serta chunk terambil dikirim ke provider saat cache miss dengan izin aktif.
+Respons disimpan ke cache, termasuk saat izin API aktif cache tetap didahulukan.
+Judge tidak dijalankan. Tanpa bukti terambil, generator tidak dipanggil.
+Cache miss tanpa izin menjadi status gagal; hasil retrieval kosong menjadi
+"tidak ada bukti". Kegagalan verifier tetap mempertahankan jawaban dengan label
+belum diverifikasi.
 
-Siapkan respons baru lewat CLI generation/evaluasi dengan izin API dan batas
-request terpisah. Gunakan pertanyaan, mode retrieval, config model, dan konteks
-yang sama agar cache cocok. Izin batch M6 tidak diperluas oleh penggunaan UI.
+API key tetap berasal dari environment atau `.env` di root repo:
+`DEEPSEEK_API_KEY` untuk provider DeepSeek atau `OPENAI_API_KEY` untuk OpenAI.
+Jangan menulis key pada pertanyaan atau config YAML. Config M6 memakai
+`deepseek-flash` dengan thinking nonaktif. Key tidak diminta atau ditampilkan
+di UI. Key hilang, transport gagal, atau respons tidak valid tetap berstatus
+gagal; UI menunjukkan langkah pemeriksaan dan lokasi laporan lokal.
+
+UI menampilkan percobaan API, cache hit, dan token API tercatat. Percobaan dapat
+gagal sebelum request terkirim, misalnya karena key hilang; angka tersebut bukan
+bukti tagihan. Pemakaian yang hilang tetap ditandai belum diketahui. Batas dua
+percobaan adalah batas per submit, bukan batas rupiah atau anggaran sesi.
+
+CLI generation/evaluasi tetap tersedia untuk batch dengan izin dan batas
+terpisah. Gunakan pertanyaan, mode retrieval, config model, dan konteks yang sama
+agar cache cocok. Izin batch M6 tidak diperluas oleh penggunaan UI.
 Jangan menjalankan build indeks bersamaan dengan query. Salinan query dan
 rekaman demo berada di `data/`, tidak masuk Git.
 
@@ -332,6 +353,9 @@ Urutan demo singkat:
    penolakan tanpa bukti. Hasil asli dipertahankan, tanpa perbaikan skor M6.
 6. Buka **Tanya korpus**. Submit pertanyaan kosong untuk melihat validasi; lalu
    gunakan pertanyaan pertama dengan hybrid+rerank untuk replay cache lokal.
+7. Untuk pertanyaan baru, aktifkan izin API dan submit pertanyaan tentang paper
+   dalam korpus. Periksa sitasi dan pemakaian token, lalu nonaktifkan izin API
+   untuk menguji replay cache. Langkah ini dapat memakai kuota provider.
 
 Pengujian widget memakai [AppTest resmi Streamlit](https://docs.streamlit.io/develop/api-reference/app-testing)
 dengan fixture dan mock, tanpa API berbayar. Hasil browser, lokasi rekaman GIF,

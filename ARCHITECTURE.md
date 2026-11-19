@@ -143,7 +143,8 @@ Aturan: kegagalan dicatat sebagai data, tidak pernah ditelan oleh `except: pass`
 ### Implementasi UI M7
 
 UI Streamlit menyediakan pembacaan hasil evaluasi tersimpan dan query lokal
-berbasis cache LLM. Mode demo membuka SQLite secara baca-saja, memeriksa hash
+dengan cache LLM serta opsi API berbayar eksplisit. Mode demo membuka SQLite
+secara baca-saja, memeriksa hash
 korpus dari laporan evaluasi, lalu membaca klaim, chunk, metadata, dan label
 verifikasi yang terkait. Kutipan dan halaman berasal dari chunk kanonis.
 
@@ -151,7 +152,14 @@ Setiap query interaktif memakai backup SQLite baru di
 `paths.cache_dir/ui-runs/<run_id>/`; indeks vektor dan cache model tetap dibaca
 dari config asal. Generation dan verifikasi memakai kontrak M5/M6 tanpa
 mengubah database benchmark. Laporan generation baru disimpan bersama salinan
-database. UI tidak mengaktifkan API LLM atau judge. Cache miss generation adalah
+database. Default UI tidak mengaktifkan API LLM. Checkbox izin berbayar pada form
+query meneruskan `allow_api=True` hanya saat submit. Generation dibatasi maksimum
+dua percobaan per submit (atau batas config yang lebih kecil), termasuk koreksi
+format yang sudah ada; retry transport tetap nol. Cache didahulukan dan respons
+baru disimpan dengan identitas cache M5 yang sama. Model dan batas output tetap
+mengikuti config. UI menampilkan percobaan, cache hit, serta usage token dari
+laporan generation; usage yang tidak diketahui tetap ditandai. Judge tidak
+dijalankan dari UI. Cache miss tanpa izin generation adalah
 kegagalan, bukan abstention; verifier gagal tetap belum diverifikasi. Status
 didukung ditampilkan hanya jika MiniCheck mendukung semua sitasi suatu klaim.
 Label otomatis tidak dianggap sebagai label manusia.

@@ -20,12 +20,17 @@ p, .stText { font-size: 1rem; line-height: 1.65; }
 button, summary, [role="radio"], [role="combobox"], a { cursor: pointer; }
 button, [role="combobox"], [data-testid="stExpander"] summary { min-height: 2.75rem; }
 button { min-width: 2.75rem; }
-[data-testid="stRadio"] label { min-height: 2.75rem; padding-right: 0.5rem; cursor: pointer; }
+[data-testid="stRadio"] label, [data-testid="stCheckbox"] label {
+    min-height: 2.75rem;
+    padding-right: 0.5rem;
+    cursor: pointer;
+}
 :is(button, summary, a, textarea, input, main, [role="combobox"]):focus-visible {
     outline: 3px solid #64748b !important;
     outline-offset: 3px !important;
 }
-[data-testid="stRadio"] label:has(input:focus-visible) {
+[data-testid="stRadio"] label:has(input:focus-visible),
+[data-testid="stCheckbox"] label:has(input:focus-visible) {
     outline: 3px solid #64748b;
     outline-offset: 3px;
 }

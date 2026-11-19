@@ -95,3 +95,12 @@ awal; setelah memilih jawaban, fokus berpindah ke klaim dan sumbernya.
 
 Tema berada di `.streamlit/config.toml`; aturan tipografi dan reflow berada di
 `src/rag/ui/style.css`. Pemetaan memakai [konfigurasi tema resmi Streamlit](https://docs.streamlit.io/develop/concepts/configuration/theming).
+
+### Pertanyaan baru melalui API
+
+Form Tanya korpus menambahkan checkbox izin API berbayar yang default-nya mati.
+Label memuat batas request per submit; catatan di dekatnya menunjukkan model,
+provider, batas output, dan pengiriman pertanyaan/chunk ke provider. Checkbox
+native memakai target minimal 44px dan fokus yang sama dengan radio. Caption
+setelah submit menunjukkan percobaan, cache hit, serta token tercatat; kegagalan
+API dibedakan dari cache miss dan ketiadaan bukti. Dial serta palet tetap 1/2/1.

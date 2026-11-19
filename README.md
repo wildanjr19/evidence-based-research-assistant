@@ -40,8 +40,13 @@ Dengan korpus dan config M6 lokal yang sesuai:
 ```
 
 Mode **Demo tersimpan** membaca 30 jawaban M6 tanpa inference atau API baru.
-Mode **Tanya korpus** menjalankan retrieval/verifikasi lokal dan hanya membaca
-cache LLM. Cache miss ditampilkan sebagai kegagalan, bukan jawaban tanpa bukti.
+Mode **Tanya korpus** menjalankan retrieval/verifikasi lokal. Untuk pertanyaan
+baru, centang **Izinkan API berbayar saat cache kosong**, lalu klik **Cari bukti**.
+Generator memakai model dari config dan tetap hanya menjawab dari chunk lokal.
+Tanpa centang, UI hanya membaca cache LLM. Maksimum dua percobaan API per submit
+(atau batas config yang lebih kecil), termasuk satu koreksi format. Respons
+disimpan ke cache; percobaan API dan pemakaian token ditampilkan di UI.
+Cache miss tanpa izin ditampilkan sebagai kegagalan, bukan jawaban tanpa bukti.
 Database query dibuat sebagai salinan baru agar database benchmark tetap utuh.
 Petunjuk untuk korpus lain dan urutan demo ada di [USAGE.md](USAGE.md#ui-streamlit-dan-demo-lokal).
 PDF, database, dan cache perlu disiapkan lokal; clone repo saja belum cukup.

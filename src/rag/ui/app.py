@@ -7,7 +7,13 @@ import streamlit as st
 
 from rag.config import Config, load_config
 from rag.retrieval.pipeline import MODES
-from rag.ui.service import load_answer, load_demo, run_question, support_label
+from rag.ui.service import (
+    MAX_API_CALLS_PER_SUBMIT,
+    load_answer,
+    load_demo,
+    run_question,
+    support_label,
+)
 
 logger = logging.getLogger(__name__)
 DEFAULT_DEMO = "eval/results/2026-11-19T01-25-11Z_7492c6"
@@ -16,11 +22,26 @@ DEFAULT_DEMO = "eval/results/2026-11-19T01-25-11Z_7492c6"
 def render_answer(answer: dict) -> None:
     st.subheader("Jawaban dan bukti", anchor=False)
     st.write(answer["question"])
-    if answer["status"] == "failed":
-        st.error(
-            "Jawaban belum tersedia. Cache LLM mungkin belum berisi pertanyaan ini. "
-            "Pilih demo tersimpan atau siapkan cache lewat CLI; UI tidak memanggil API."
+    if usage := answer.get("usage"):
+        st.caption(
+            f"Percobaan API: {usage['backend_calls']} · Cache hit: {usage['cache_hits']} · "
+            f"Token API tercatat: {usage['input_tokens']} input / {usage['output_tokens']} output"
         )
+        if usage["unknown_usage_attempts"]:
+            st.caption("Pemakaian token sebagian percobaan gagal belum diketahui.")
+    if answer["status"] == "failed":
+        if answer.get("api_allowed"):
+            st.error(
+                "Generasi jawaban gagal. Periksa API key provider di environment atau .env, "
+                "koneksi, dan laporan run sebelum mencoba lagi."
+            )
+        else:
+            st.error(
+                "Jawaban belum tersedia dari cache. Aktifkan izin API berbayar untuk membuat "
+                "jawaban baru, atau pilih demo tersimpan. Periksa laporan run jika cache rusak."
+            )
+        if answer.get("report_path"):
+            st.text(f"Laporan lokal: {answer['report_path']}")
         return
     if not answer["claims"]:
         st.info(
@@ -55,6 +76,8 @@ def render_answer(answer: dict) -> None:
     )
     with st.expander("Catatan jawaban"):
         st.text(f"Run: {answer['run_id']}\nGenerator: {answer['model']}")
+        if answer.get("report_path"):
+            st.text(f"Laporan lokal: {answer['report_path']}")
 
 
 def main(config_path: str = "configs/config.yaml", demo_dir: str = DEFAULT_DEMO) -> None:
@@ -111,14 +134,26 @@ def main(config_path: str = "configs/config.yaml", demo_dir: str = DEFAULT_DEMO)
 
 def query_form(config: Config) -> dict | None:
     st.caption(
-        "Retrieval dan MiniCheck berjalan lokal. Jawaban hanya dibaca dari cache LLM; "
-        "pertanyaan baru dapat gagal bila respons belum tersimpan."
+        "Tanyakan hal baru tentang paper dalam korpus. Jawaban memakai bukti lokal; "
+        "aktifkan izin API untuk membuat jawaban yang belum tersedia di cache."
     )
+    limit = min(config.generation.max_calls_per_run, MAX_API_CALLS_PER_SUBMIT)
     with st.form("question_form"):
         question = st.text_area(
             "Pertanyaan riset", placeholder="Tulis pertanyaan tentang literatur dalam korpus"
         )
         mode = st.selectbox("Metode retrieval", MODES, index=3)
+        allow_api = st.checkbox(
+            f"Izinkan API berbayar saat cache kosong (maks. {limit} request per submit)",
+            value=False,
+            help="Cache selalu diperiksa lebih dulu. Izin berlaku untuk setiap klik Cari bukti.",
+        )
+        st.caption(
+            f"Generator: {config.generation.model}. Pertanyaan dan chunk bukti dikirim ke "
+            f"provider {config.generation.provider} jika API dipakai. "
+            f"Batas output {config.generation.max_output_tokens} token per request. "
+            "API key dibaca dari environment atau .env."
+        )
         submitted = st.form_submit_button("Cari bukti", type="primary")
     if submitted:
         st.session_state.pop("query_answer", None)
@@ -126,8 +161,10 @@ def query_form(config: Config) -> dict | None:
             st.error("Tulis pertanyaan sebelum mencari bukti.")
         else:
             try:
-                with st.spinner("Mengambil chunk, membaca cache jawaban, dan memeriksa dukungan…"):
-                    st.session_state["query_answer"] = run_question(question.strip(), config, mode)
+                with st.spinner("Mengambil bukti, menyiapkan jawaban, dan memeriksa dukungan…"):
+                    st.session_state["query_answer"] = run_question(
+                        question.strip(), config, mode, allow_api=allow_api
+                    )
             except (ValueError, RuntimeError, OSError, ImportError, sqlite3.Error):
                 logger.exception("Local query failed")
                 st.error(
@@ -138,7 +175,7 @@ def query_form(config: Config) -> dict | None:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Local evidence browser; no paid API calls")
+    parser = argparse.ArgumentParser(description="Local evidence browser with optional bounded API")
     parser.add_argument("--config", default="configs/config.yaml")
     parser.add_argument("--demo-dir", default=DEFAULT_DEMO)
     args = parser.parse_args()

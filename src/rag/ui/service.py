@@ -16,6 +16,8 @@ from rag.retrieval.pipeline import Retriever
 from rag.verification.minicheck import CachedVerifier
 from rag.verification.pipeline import verify_answer
 
+MAX_API_CALLS_PER_SUBMIT = 2
+
 
 def source_url(value: str | None) -> str | None:
     if not value:
@@ -129,7 +131,7 @@ def support_label(claim: dict, verification: list[dict]) -> str:
     return "Belum diverifikasi"
 
 
-def run_question(question: str, config: Config, mode: str) -> dict:
+def run_question(question: str, config: Config, mode: str, *, allow_api: bool = False) -> dict:
     """Keep query writes in a new snapshot; the benchmark database stays read-only."""
     if not question.strip():
         raise ValueError("Tulis pertanyaan sebelum mencari bukti.")
@@ -141,13 +143,29 @@ def run_question(question: str, config: Config, mode: str) -> dict:
     retrieval_config = replace(config, paths=replace(config.paths, db_path=str(database)))
     chunks = Retriever(retrieval_config).retrieve(question, mode)
     query_config = replace(
-        retrieval_config, paths=replace(retrieval_config.paths, index_dir=str(directory))
+        retrieval_config,
+        paths=replace(retrieval_config.paths, index_dir=str(directory)),
+        generation=replace(
+            config.generation,
+            max_calls_per_run=min(config.generation.max_calls_per_run, MAX_API_CALLS_PER_SUBMIT),
+        ),
     )
-    generation = generate_answer(question, chunks, query_config, allow_api=False, mode=mode)
+    generation = generate_answer(question, chunks, query_config, allow_api=allow_api, mode=mode)
     verification = []
     if generation["status"] == "ok":
         verification = verify_answer(generation, query_config, CachedVerifier(query_config))
     answer = load_answer(query_config, generation["answer_id"])
     answer["verification"] = verification
     answer["report_path"] = generation["report_path"]
+    answer["api_allowed"] = allow_api
+    answer["usage"] = {
+        key: generation[key]
+        for key in (
+            "backend_calls",
+            "cache_hits",
+            "input_tokens",
+            "output_tokens",
+            "unknown_usage_attempts",
+        )
+    }
     return answer

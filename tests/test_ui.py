@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from streamlit.testing.v1 import AppTest
 
+from rag.generation.client import Completion, LLMError, OpenAIBackend
 from rag.indexing.embedding import text_hash
 from rag.indexing.pipeline import load_chunks
 from rag.ui import service
@@ -210,22 +211,28 @@ def test_app_query_validation_submit_and_rerun(
     answer = service.load_answer(demo[0], demo[2]["answer_id"])
     calls = []
 
-    def query(question: str, config: object, mode: str) -> dict:
-        calls.append((question, mode))
+    def query(question: str, config: object, mode: str, *, allow_api: bool = False) -> dict:
+        calls.append((question, mode, allow_api))
         return answer
 
     monkeypatch.setattr("rag.ui.app.run_question", query)
     app = app_test(demo, monkeypatch)
     app.radio[0].set_value("Tanya korpus").run()
+    assert app.checkbox[0].value is False
     app.button[0].click().run()
     assert "Tulis pertanyaan" in app.error[0].value
     app.text_area[0].set_value("  Compare the evidence.  ")
     app.button[0].click().run()
     assert not app.exception
-    assert calls == [("Compare the evidence.", "hybrid+rerank")]
+    assert calls == [("Compare the evidence.", "hybrid+rerank", False)]
     app.run()
     assert len(calls) == 1
     assert any("Alpha evidence" in text.value for text in app.text)
+    app.checkbox[0].check()
+    app.button[0].click().run()
+    assert calls[-1] == ("Compare the evidence.", "hybrid+rerank", True)
+    app.run()
+    assert len(calls) == 2
 
 
 def test_app_reports_missing_demo_and_config(demo: tuple, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -243,3 +250,132 @@ def test_app_reports_missing_demo_and_config(demo: tuple, monkeypatch: pytest.Mo
     monkeypatch.setattr("rag.ui.app.load_config", invalid)
     app.run()
     assert "Config tidak dapat dibaca" in app.error[0].value
+
+
+def test_api_opt_in_generates_caches_and_reports_usage_without_network(
+    corpus: tuple, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config, _ = corpus
+    before = Path(config.paths.db_path).read_bytes()
+    observed = []
+
+    def complete(self: object, messages: list, selected: object) -> Completion:
+        observed.append(selected)
+        return completion([dict(text="Alpha evidence is reported.", citations=[FIRST])])
+
+    monkeypatch.setattr(OpenAIBackend, "complete", complete)
+    monkeypatch.setattr(
+        service, "CachedVerifier", lambda selected: CachedVerifier(selected, FakeSupport())
+    )
+    question = "What does the Alpha evidence report?"
+    missing = service.run_question(question, config, "bm25")
+    assert missing["status"] == "failed"
+    assert not observed
+    generated = service.run_question(question, config, "bm25", allow_api=True)
+    assert generated["status"] == "ok"
+    assert len(observed) == 1
+    assert observed[0].generation.max_calls_per_run == 2
+    assert generated["usage"] == dict(
+        backend_calls=1, cache_hits=0, input_tokens=100, output_tokens=20, unknown_usage_attempts=0
+    )
+    replay = service.run_question(question, config, "bm25")
+    assert replay["status"] == "ok"
+    assert replay["api_allowed"] is False
+    assert replay["usage"]["backend_calls"] == 0
+    assert replay["usage"]["cache_hits"] == 1
+    assert len(observed) == 1
+    assert Path(config.paths.db_path).read_bytes() == before
+    assert config.generation.max_calls_per_run == 200
+
+
+@pytest.mark.parametrize("configured, expected", [(1, 1), (60, 2)])
+def test_ui_api_request_limit_includes_format_retry(
+    corpus: tuple, monkeypatch: pytest.MonkeyPatch, configured: int, expected: int
+) -> None:
+    config, _ = corpus
+    config = replace(config, generation=replace(config.generation, max_calls_per_run=configured))
+    observed = []
+
+    def invalid(self: object, messages: list, selected: object) -> Completion:
+        observed.append(selected.generation.max_calls_per_run)
+        return Completion("not JSON", "fixture-model", 100, 10)
+
+    monkeypatch.setattr(OpenAIBackend, "complete", invalid)
+    answer = service.run_question("Alpha evidence format test", config, "bm25", allow_api=True)
+    assert answer["status"] == "failed"
+    assert len(observed) == expected
+    assert answer["usage"]["backend_calls"] == expected
+    assert observed == [expected] * expected
+    report = json.loads(Path(answer["report_path"]).read_text())
+    assert report["config"]["generation"]["max_calls_per_run"] == expected
+
+
+def test_api_permission_does_not_call_provider_without_evidence(
+    corpus: tuple, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config, _ = corpus
+
+    def forbidden(*args: object) -> None:
+        raise AssertionError("No evidence must not call the provider")
+
+    monkeypatch.setattr(OpenAIBackend, "complete", forbidden)
+    answer = service.run_question("!!!", config, "bm25", allow_api=True)
+    assert answer["status"] == "no_evidence"
+    assert answer["usage"]["backend_calls"] == 0
+    assert answer["claims"] == []
+
+
+def test_api_missing_key_is_failure_not_abstention(
+    corpus: tuple, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config, _ = corpus
+
+    def missing_key(variable: str) -> None:
+        raise LLMError(f"Missing {variable}; set it in the environment or .env")
+
+    monkeypatch.setattr("rag.generation.client._api_key", missing_key)
+    answer = service.run_question("Alpha evidence key test", config, "bm25", allow_api=True)
+    assert answer["status"] == "failed"
+    assert answer["api_allowed"] is True
+    assert answer["usage"]["unknown_usage_attempts"] == 1
+    assert answer["claims"] == []
+
+
+def test_api_transport_error_is_not_retried(corpus: tuple, monkeypatch: pytest.MonkeyPatch) -> None:
+    config, _ = corpus
+    calls = []
+
+    def failed(*args: object) -> None:
+        calls.append(1)
+        raise OSError("fixture connection failure")
+
+    monkeypatch.setattr(OpenAIBackend, "complete", failed)
+    answer = service.run_question("Alpha evidence transport test", config, "bm25", allow_api=True)
+    assert answer["status"] == "failed"
+    assert answer["usage"]["backend_calls"] == 1
+    assert len(calls) == 1
+
+
+def test_app_api_error_shows_setup_and_usage_not_cache_message(
+    demo: tuple, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    answer = service.load_answer(demo[0], demo[2]["answer_id"])
+    answer.update(
+        status="failed",
+        api_allowed=True,
+        report_path="local-report.json",
+        usage=dict(
+            backend_calls=1, cache_hits=0, input_tokens=0, output_tokens=0, unknown_usage_attempts=1
+        ),
+    )
+    monkeypatch.setattr("rag.ui.app.run_question", lambda *args, **kwargs: answer)
+    app = app_test(demo, monkeypatch)
+    app.radio[0].set_value("Tanya korpus").run()
+    app.text_area[0].set_value("A new question")
+    app.checkbox[0].check()
+    app.button[0].click().run()
+    assert not app.exception
+    assert "API key provider" in app.error[0].value
+    assert any("Percobaan API: 1" in caption.value for caption in app.caption)
+    assert any("belum diketahui" in caption.value for caption in app.caption)
+    assert any("local-report.json" in text.value for text in app.text)

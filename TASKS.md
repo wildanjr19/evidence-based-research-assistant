@@ -926,6 +926,58 @@ pembersihan komentar di luar tugas; perubahan fitur dilakukan dalam lingkup M7.
 
 ---
 
+### Lanjutan M7: pertanyaan baru dengan API opsional (2026-11-19)
+
+Permintaan pengguna agar dapat mengajukan pertanyaan baru ditangani dengan
+checkbox izin API berbayar di form Tanya korpus. Default tetap cache; checkbox
+aktif mengizinkan request pada setiap klik Cari bukti. Batas keras per submit
+adalah minimum dari dua dan `generation.max_calls_per_run`, termasuk satu
+koreksi format dari pipeline lama. Tidak ada retry transport atau API judge.
+Cache selalu didahulukan dan respons baru disimpan untuk replay tanpa izin API.
+Model/thinking/output mengikuti config, termasuk DeepSeek Flash non-thinking
+pada config M6; skema, prompt grounding, ID, dan format sitasi tetap.
+
+UI menjelaskan model, provider, pengiriman pertanyaan/chunk, dan batas output
+sebelum submit. Sesudahnya UI menampilkan percobaan API, cache hit, token
+tercatat, dan usage yang belum diketahui. Percobaan dapat gagal sebelum request
+terkirim; angka itu bukan tagihan. Error API mengarahkan ke key/koneksi/laporan,
+sedangkan cache miss tanpa izin menawarkan aktivasi API. Lokasi laporan juga
+ditampilkan pada kegagalan. Key tetap dibaca dari environment atau `.env`, tanpa
+field key di UI atau perubahan `.env.example`.
+
+**Verifikasi:** 404 test lulus, termasuk 24 test UI; Ruff lint/format dan
+`git diff --check` bersih. Tujuh test baru memakai mock provider untuk menguji
+generation baru, replay cache, usage, batas 1/2 percobaan termasuk koreksi format,
+key hilang, transport gagal tanpa retry, dan retrieval kosong tanpa request.
+Test widget memastikan izin default mati, diteruskan hanya pada submit, dan
+rerun tidak memanggil generation lagi. Tidak ada API berbayar nyata dalam test.
+
+Browser QA dijalankan pada server terpisah `127.0.0.1:8502`; server pengguna
+di 8501 tidak dihentikan. Checkbox diuji dengan Space, label aksesibel, target
+44px atau lebih, dan fokus slate 3px. Tujuh viewport 320–1280px serta teks 200%
+tidak overflow. Submit BM25 tanpa izin menghasilkan cache miss dengan nol
+percobaan API. Hash database M6 sebelum/sesudah tetap
+`bafff678dab7bbf792eb26ba22f2007f57428564bb76dd4491447dd1e1e11cc9`.
+Artefak di `data/ui-api-review/browser-validation.json`, `1280-api-option.png`,
+`375-api-option.png`, dan `cache-miss-no-permission.png` tidak masuk Git.
+
+Gate antislop penuh M7 di atas ditinjau ulang untuk perubahan ini. Arah visual,
+dial, palet, motif, dan sumber data tetap; tanpa aset atau navigasi baru.
+
+| Item yang terpengaruh | Status dan bukti |
+|---|---|
+| Hard R-03 / Craft C-4 | PASS: 320–1280px dan teks 200% tanpa overflow. |
+| Hard R-25 / R-32 / R-39 | PASS: palet lama; checkbox bernama, target minimal 44px, keyboard Space, fokus 3px. |
+| Hard R-26 / R-35 / Craft C-2 | PASS: checkbox diuji di browser; submit dengan izin diuji AppTest dan mock provider. |
+| Hard R-27 / Craft C-5 | PASS: cache miss, API gagal, usage hilang, tanpa bukti, dan sukses tetap terpisah; angka berasal dari laporan. |
+| Purpose / Liveliness | PASS: checkbox ditempatkan bersama submit untuk keputusan biaya; dial 1/2/1 dan motif klaim/sitasi tetap. |
+| Antislop-code | PASS: tidak ada komentar dekoratif baru atau cleanup di luar lingkup. |
+
+**Batas:** request provider berbayar nyata dari UI belum diuji pada perubahan
+ini. Mengaktifkan checkbox dapat memakai kuota; batas dua adalah per submit,
+bukan anggaran seluruh sesi. Pertanyaan boleh baru, tetapi jawaban tetap hanya
+dari paper dalam korpus. Ponsel fisik, screen reader, dan GPU belum diuji.
+
 ## Backlog (v2, jangan dikerjakan sebelum M7)
 
 - Tabel perbandingan metode antar paper.
