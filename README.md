@@ -18,13 +18,33 @@ Paper open access -> Parsing PDF -> Chunking -> Embedding + indeks BM25
 Pertanyaan -> Hybrid retrieval + rerank -> Jawaban bersitasi -> Verifikasi
 ```
 
-Stack utama: Python, PyMuPDF, BGE, LanceDB, dan SQLite FTS5. UI direncanakan memakai Streamlit. Rincian komponen dan keputusan desain ada di [ARCHITECTURE.md](ARCHITECTURE.md).
+Stack utama: Python, PyMuPDF, BGE, LanceDB, SQLite FTS5, dan UI Streamlit. Rincian komponen dan keputusan desain ada di [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Status
 
-**M0 sampai M6 selesai untuk benchmark awal:** ingestion, parsing, chunking, indexing, retrieval, generation bersitasi, MiniCheck lokal, dan judge generatif GPT-4o-mini melalui Surplus.
+**M0 sampai M7 selesai untuk benchmark awal:** ingestion, parsing, chunking, indexing, retrieval, generation bersitasi, MiniCheck lokal, judge generatif GPT-4o-mini melalui Surplus, dan UI demo Streamlit.
 
-Dataset yang ditinjau pengguna berisi 30 pertanyaan lintas empat paper berlisensi, dengan 236 chunk. [Laporan M6](eval/results/2026-11-19T01-25-11Z_7492c6/m6-summary.md) memuat hasil, biaya estimasi, pengulangan dari cache, serta analisis kegagalan. Label manusia 52 pasangan dari eksperimen satu paper dilaporkan terpisah; accuracy terhadap manusia pada klaim generation baru belum diukur. UI M7, target korpus 100–500 paper, dan inference model di GPU belum dikerjakan. Catatan verifikasi dan handoff ada di [TASKS.md](TASKS.md).
+Dataset yang ditinjau pengguna berisi 30 pertanyaan lintas empat paper berlisensi, dengan 236 chunk. [Laporan M6](eval/results/2026-11-19T01-25-11Z_7492c6/m6-summary.md) memuat hasil, biaya estimasi, dan pengulangan dari cache. [Analisis kegagalan](eval/results/2026-11-19T01-25-11Z_7492c6/failure-analysis.md) membahas sitasi yang tidak didukung dan kontrol abstention. Label manusia 52 pasangan dari eksperimen satu paper dilaporkan terpisah; accuracy terhadap manusia pada klaim generation baru belum diukur. Target korpus 100–500 paper dan inference model di GPU masih tertunda. Catatan verifikasi dan handoff ada di [TASKS.md](TASKS.md).
+
+## Demo lokal
+
+UI menampilkan jawaban per klaim. Buka sitasi untuk membaca kutipan asli, ID chunk,
+halaman, section, dan lisensi, lalu buka tautan paper untuk memeriksa sumbernya.
+Label dukungan otomatis dibedakan dari klaim tanpa bukti dan klaim yang belum
+diverifikasi. Label tersebut bukan penilaian manusia.
+
+Dengan korpus dan config M6 lokal yang sesuai:
+
+```powershell
+.venv/Scripts/python.exe -m streamlit run src/rag/ui/app.py --server.address 127.0.0.1 -- --config data/m6-multipaper/20261119T004114Z/config-citations-surplus-gpt-authorized-v1.yaml
+```
+
+Mode **Demo tersimpan** membaca 30 jawaban M6 tanpa inference atau API baru.
+Mode **Tanya korpus** menjalankan retrieval/verifikasi lokal dan hanya membaca
+cache LLM. Cache miss ditampilkan sebagai kegagalan, bukan jawaban tanpa bukti.
+Database query dibuat sebagai salinan baru agar database benchmark tetap utuh.
+Petunjuk untuk korpus lain dan urutan demo ada di [USAGE.md](USAGE.md#ui-streamlit-dan-demo-lokal).
+PDF, database, dan cache perlu disiapkan lokal; clone repo saja belum cukup.
 
 Pilot [Jev dibandingkan dengan MiniCheck](eval/results/2026-11-18T11-50-46Z_ad072b/report.md)
 memeriksa 12 pasangan kandidat klaim–chunk dari satu paper. Jev menjawab seluruh

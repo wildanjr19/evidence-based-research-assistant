@@ -786,10 +786,143 @@ diuji. **Agenda berikutnya M7: UI Streamlit dan dokumentasi demo.**
 
 **Acceptance criteria:**
 
-- [ ] UI menampilkan jawaban per klaim, kutipan chunk, nomor halaman, dan penanda klaim tanpa bukti.
-- [ ] Tema UI mengikuti `DESIGN.md` (token yang tidak masuk akal diperbaiki dan dicatat di sana).
-- [ ] README memperkenalkan proyek dan menautkan panduan penggunaan, arsitektur/keputusan desain, serta laporan evaluasi dan analisis kegagalan di `eval/results/<run_id>/`.
-- [ ] Tidak ada secret, PDF, atau isi `data/` di repo.
+- [x] UI menampilkan jawaban per klaim, kutipan chunk, nomor halaman, dan penanda klaim tanpa bukti.
+- [x] Tema UI mengikuti `DESIGN.md` (token yang tidak masuk akal diperbaiki dan dicatat di sana).
+- [x] README memperkenalkan proyek dan menautkan panduan penggunaan, arsitektur/keputusan desain, serta laporan evaluasi dan analisis kegagalan di `eval/results/<run_id>/`.
+- [x] Tidak ada secret, PDF, atau isi `data/` yang ditambahkan ke Git pada M7.
+
+### Implementasi dan verifikasi M7 (2026-11-19)
+
+UI lokal tersedia di `src/rag/ui/app.py`, dengan logika akses data di
+`service.py`. Demo tersimpan membaca 30 jawaban dan 101 klaim M6 tanpa memuat
+model. Hash seluruh chunk wajib cocok dengan laporan evaluasi; jawaban dan
+pertanyaan juga dicocokkan ke SQLite. Kutipan, halaman, section, judul, URL, dan
+lisensi berasal dari database kanonis. Klaim/kutipan dirender sebagai teks,
+bukan HTML dari LLM. Tautan paper hanya menerima HTTPS tanpa kredensial.
+
+Mode query memakai retrieval yang sudah ada, cache LLM tanpa `allow_api`, dan
+MiniCheck lokal. Setiap query membuat backup database terpisah di
+`paths.cache_dir/ui-runs/<run_id>/`. Generation/verifikasi menulis ke salinan
+dan laporan baru, bukan database benchmark. Judge tidak dipanggil dari UI.
+Cache miss generation berstatus gagal, retrieval kosong berstatus tanpa bukti,
+dan kegagalan verifier tetap belum diverifikasi. Label didukung mensyaratkan
+seluruh sitasi klaim didukung MiniCheck; label judge tetap terpisah.
+
+`DESIGN.md` mencatat pemetaan token: body 7px menjadi 16px, mono 10px menjadi
+14px, surface menjadi netral, dan kutipan memakai Georgia lokal. Tema terang,
+urutan satu kolom, kontrol native, serta fokus keyboard mengikuti kebutuhan
+pembacaan sumber. README, USAGE, dan catatan implementasi arsitektur diperbarui.
+Tidak ada dependensi baru, perubahan skema, format ID/sitasi, atau dataset uji.
+
+**Verifikasi otomatis:** 397 test lulus, termasuk 17 test UI
+baru. Ruff lint/format dan `git diff --check` bersih. Fixture/mock menguji
+sitasi kanonis, penolakan korpus berbeda, penanda bukti, label hilang/partial,
+URL tidak aman, teks menyerupai HTML, validasi form, rerun widget, cache miss,
+isolasi database, dan kegagalan verifier. Seluruh test tanpa API berbayar.
+
+**Verifikasi browser:** Edge headless lokal, pointer serta Tab/Enter/Space/Home,
+pilihan contoh, clear selection, form kosong, ekspander kutipan/catatan, dan
+tautan sumber ke halaman arXiv diuji. Lebar 320, 375, 640, 768, 900, 1024, dan
+1280px tidak menghasilkan overflow; teks 200% pada viewport 640px tetap reflow.
+Halaman memiliki `lang=id`, judul, landmark main, skip link, label kontrol,
+serta fokus slate 3px. Tampilan yang dikirim adalah tema terang; perubahan
+localStorage tidak mengaktifkan tema gelap dan tidak dihitung sebagai uji dark.
+Tidak ada toggle tema di UI.
+
+Replay pertanyaan pertama lewat form menghasilkan satu cache hit LLM per
+replay; submit BM25 dengan pertanyaan baru menghasilkan cache miss. Seluruh
+laporan generation UI mencatat nol request API. Hash file database M6 sebelum dan
+sesudah validasi browser tetap
+`bafff678dab7bbf792eb26ba22f2007f57428564bb76dd4491447dd1e1e11cc9`.
+Hasil evaluasi M6 tidak ditulis ulang dan skor abstention tidak diubah.
+
+Artefak lokal yang tidak masuk Git:
+
+- `data/ui-review/demo.gif`: rekaman singkat dari browser.
+- `data/ui-review/browser-validation.json`: viewport, state, replay, fokus,
+  dan hash database sebelum/sesudah.
+- `data/ui-review/supplemental-validation.json`: nama kontrol aksesibel,
+  pembukaan tab sumber, dan warna computed.
+- `data/ui-review/keyboard-validation.json`: urutan fokus keyboard.
+- `data/ui-review/*-evidence.png`: tangkapan desktop/tablet/ponsel.
+- `data/cache/ui-runs/`: salinan database query dan laporan generation baru.
+
+**Batas:** belum diuji dengan ponsel fisik, screen reader, atau inference GPU.
+Pemeriksaan browser bukan sertifikasi WCAG. Query baru memerlukan cache LLM
+yang cocok; UI ini tidak menyediakan generasi berbayar langsung. Target korpus
+100–500 paper dan accuracy manusia pada klaim generation baru tetap tertunda.
+Server QA ditutup setelah verifikasi; command menjalankan demo ada di USAGE.md.
+
+**M7 ditutup.** Backlog v2 tetap terpisah; perluasan korpus/GPU dan evaluasi
+manusia pada klaim baru dapat dipilih sebagai pekerjaan berikutnya.
+
+### Delivery Gate antislop M7
+
+Pemeriksaan berlaku pada UI yang dikirim, yaitu tema terang lokal. Bukti browser
+dan test di atas menjadi dasar; item fitur yang tidak ada dijelaskan eksplisit.
+
+| Item | Status dan bukti |
+|---|---|
+| Hard R-02 | PASS: copy UI baru tanpa em dash; kutipan sumber dipertahankan verbatim. |
+| Hard R-03 | PASS: tujuh viewport 320–1280px dan teks 200% tanpa overflow. |
+| Hard R-17 | PASS: UI tidak menampilkan statistik promosi; isi berasal dari jawaban tersimpan. |
+| Hard R-18 | PASS: tidak ada testimoni atau orang fiktif. |
+| Hard R-23 | PASS: tidak membuat logo, avatar, ilustrasi, atau navigasi spekulatif; GIF merekam demo yang diminta. |
+| Hard R-24 | PASS: kontrol sumber jawaban bekerja; tautan paper membuka URL arXiv yang tersimpan. |
+| Hard R-25 | PASS: checker mengukur navy/putih 17,85:1, navy/surface 16,30:1, caption/putih 4,68:1. |
+| Hard R-26 | PASS: radio, dropdown, clear, submit, ekspander, dan tautan diuji di browser. |
+| Hard R-27 | PASS: pilihan awal kosong, spinner berteks, tanpa bukti, form kosong, dan cache miss dibedakan. |
+| Hard R-28 | PASS: tidak ada FAQ. |
+| Hard R-32 | PASS: Tab memindahkan fokus; Enter membuka sitasi/catatan; Space mengganti mode. |
+| Hard R-33 | PASS: Python/CSS ditulis di source; skrip browser hanya melakukan QA. |
+| Hard R-34 | PASS: satu tema terang yang diuji; tidak ada toggle tema. |
+| Hard R-35 | PASS: Streamlit dijalankan dan alur kontrol direkam pada GIF/JSON lokal. |
+| Hard R-36 | PASS: tidak ada klaim keamanan, compliance, atau performa produk yang dibuat-buat. |
+| Hard R-37 | PASS: Design Read meja baca riset dan dial 1/2/1 ditetapkan sebelum implementasi. |
+| Hard R-38 | PASS: jawaban dan sumber nyata M6; test memakai fixture berlabel. |
+| Hard R-39 | PASS: native controls bernama, label terlihat, target diperbesar, fokus 3px, lang/title/main dan reduced motion tersedia. |
+| Hard R-40 | PASS: UI tanpa media eksternal atau script pihak ketiga; konten dimuat setelah aksi dengan spinner berteks. |
+| Purpose R-01 | PASS: palet dari DESIGN; navy untuk teks dan aksi, tanpa gradien. |
+| Purpose R-04 | PASS: ikon native hanya membuka/menutup, membersihkan, atau menandai state. |
+| Purpose R-06 | PASS: sans untuk pemindaian klaim; Georgia untuk membedakan kutipan paper. |
+| Purpose R-07 | PASS: tidak ada grid atau pola latar dekoratif. |
+| Purpose R-08 | PASS: tombol memakai kata kerja, tanpa panah dekoratif. |
+| Purpose R-09 | PASS: status ditulis pada klaim, tanpa capsule badge. |
+| Purpose R-10 | PASS: tidak memakai glassmorphism. |
+| Purpose R-12 | PASS: tidak memakai shadow besar. |
+| Purpose R-13 | PASS: tidak memakai glow. |
+| Purpose R-14 | PASS: konten berupa urutan klaim/sumber, tanpa feature cards seragam. |
+| Purpose R-19 | PASS: hanya state widget dan indikator proses; CSS menghormati reduced motion. |
+| Purpose R-22 | PASS: tidak memakai ilustrasi. |
+| Liveliness dial | PASS: ENERGY 1 / RHYTHM 2 / MOTION 1 dicatat di DESIGN. |
+| Liveliness konsistensi | PASS: form ringkas, jawaban berurutan, kutipan dapat dibuka; tanpa animasi dekoratif. |
+| Liveliness fokus | PASS: pertanyaan menjadi fokus awal; klaim/bukti menjadi fokus setelah dipilih. |
+| Liveliness whitespace | PASS: jarak memisahkan input, jawaban, dan klaim; padding mengecil pada ponsel. |
+| Liveliness aksen | PASS: navy pada aksi utama dan slate pada fokus, bukan warna di setiap komponen. |
+| Liveliness identitas | PASS: pasangan klaim bernomor dan sitasi bernomor/halaman diulang sesuai isi. |
+| Liveliness Design Read | PASS: arah meja baca riset ditetapkan sebelum source UI ditulis. |
+| Craft C-1 | PASS: alasan palet, font, lebar baca, dan motif tercatat di DESIGN. |
+| Craft C-2 | PASS: widget dan tautan memiliki perilaku yang diperiksa. |
+| Craft C-3 | PASS: bagian UI hanya untuk memilih pertanyaan, membaca klaim, dan memeriksa sumber. |
+| Craft C-4 | PASS: state kosong/gagal/sukses, reflow, dan keyboard diuji; batas perangkat fisik dicatat. |
+| Craft C-5 | PASS: sumber dari SQLite, hash demo diperiksa; tidak ada klaim promosi. |
+| Quality R-05 | PASS: form, urutan klaim, dan ekspander mengikuti isi; tanpa susunan landing page. |
+| Quality R-11 | PASS: radius widget native, tanpa pill untuk semua elemen. |
+| Quality R-15 | PASS: CTA spesifik “Cari bukti” dan “Buka paper sumber”. |
+| Quality R-16 | PASS: copy menjelaskan bukti dan batas cache; tanpa jargon marketing AI. |
+| Quality R-20 | PASS: identitas berasal dari hubungan klaim, ID chunk, halaman, dan kutipan. |
+| Quality R-21 | PASS: tema terang untuk membaca literatur; tidak memaksakan dark mode. |
+| Quality R-29 | PASS: navy, putih, surface netral, dan slate; warna error hanya untuk state nyata. |
+| Quality R-30 | PASS: komposisi mengikuti pemeriksaan literatur, bukan replika produk lain. |
+| Quality R-31 | PASS: alasan keputusan visual dicatat; kode baru tidak menambah komentar dekoratif. |
+
+Suplemen UI PASS: palet/desain eksplisit, kontrol nyata, tanpa konten fiktif,
+serta state/reflow diuji. Suplemen human PASS: kontras teks di atas 4,5:1;
+border/fokus slate pada surface 4,34:1 melewati batas nonteks 3:1; kontrol
+bernama, label, dan keyboard diperiksa. Suplemen mobile PASS: satu kolom
+responsif, ukuran/padding berubah, target minimal 44px, dan overflow diperiksa.
+Antislop-code PASS: tidak ada komentar baru yang menarasikan kode atau
+pembersihan komentar di luar tugas; perubahan fitur dilakukan dalam lingkup M7.
 
 ---
 

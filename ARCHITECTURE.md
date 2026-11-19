@@ -140,6 +140,22 @@ Aturan: kegagalan dicatat sebagai data, tidak pernah ditelan oleh `except: pass`
 
 ---
 
+### Implementasi UI M7
+
+UI Streamlit menyediakan pembacaan hasil evaluasi tersimpan dan query lokal
+berbasis cache LLM. Mode demo membuka SQLite secara baca-saja, memeriksa hash
+korpus dari laporan evaluasi, lalu membaca klaim, chunk, metadata, dan label
+verifikasi yang terkait. Kutipan dan halaman berasal dari chunk kanonis.
+
+Setiap query interaktif memakai backup SQLite baru di
+`paths.cache_dir/ui-runs/<run_id>/`; indeks vektor dan cache model tetap dibaca
+dari config asal. Generation dan verifikasi memakai kontrak M5/M6 tanpa
+mengubah database benchmark. Laporan generation baru disimpan bersama salinan
+database. UI tidak mengaktifkan API LLM atau judge. Cache miss generation adalah
+kegagalan, bukan abstention; verifier gagal tetap belum diverifikasi. Status
+didukung ditampilkan hanya jika MiniCheck mendukung semua sitasi suatu klaim.
+Label otomatis tidak dianggap sebagai label manusia.
+
 ## 4. Skema data (SQLite)
 
 Satu database: `data/index/corpus.db`. Vektor disimpan terpisah di vector store, dirujuk lewat `chunk_id`.

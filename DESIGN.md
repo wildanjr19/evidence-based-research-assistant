@@ -1,14 +1,14 @@
 ---
 version: alpha
-name: "Blurr"
-description: "Blur bagian mana pun dari halaman web sebelum Anda berbagi layar, live streaming, atau mengambil screenshot. Gambar kotak, klik elemen, atau pilih teks. Gratis."
+name: "Evidence-Based Research Assistant"
+description: "Meja baca literatur ilmiah: klaim, sitasi, dan kutipan sumber."
 sourceUrl: "https://blurr.ing/id/"
 
 colors:
   primary: "#0f172a"
   on-primary: "#ffffff"
   background: "#ffffff"
-  surface: "#6366f1"
+  surface: "#f1f5f9"
   border: "#1f1f1f"
   text: "#0f172a"
   text-muted: "#3d3c38"
@@ -29,14 +29,14 @@ typography:
     letterSpacing: -0.66px
   body:
     fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
-    fontSize: 7px
+    fontSize: 16px
     fontWeight: 500
-    lineHeight: 1
+    lineHeight: 1.65
   mono:
     fontFamily: "ui-monospace, SF Mono, Menlo, Consolas, monospace"
-    fontSize: 10px
+    fontSize: 14px
     fontWeight: 500
-    lineHeight: 1.3
+    lineHeight: 1.5
 
 spacing:
   base: 4px
@@ -67,8 +67,31 @@ breakpoints: [640px, 900px, 1024px, 1180px, 1280px]
 File ini **hanya** berisi sistem desain visual untuk UI Streamlit: warna, tipografi, spacing, radius, shadow, motion, breakpoint.
 
 - Arsitektur sistem, skema data, format sitasi, dan protokol evaluasi ada di `ARCHITECTURE.md`.
-- Token di bawah adalah hasil ekstraksi dari `https://blurr.ing/id/` dan belum diterjemahkan ke tema Streamlit. Nilai `typography.body.fontSize: 7px` adalah artefak proses scrape (bukan ukuran teks asli di halaman sumber) — jangan dipakai apa adanya saat memetakan ke `st.set_page_config`/CSS. Perbaiki saat implementasi UI, dan catat perubahannya di file ini.
+- Token awal berasal dari `https://blurr.ing/id/`. M7 memetakan palet dan tipografi ke Streamlit; produk tidak memakai nama, copy, atau aset situs referensi.
 
 ## Rationale
 
-Measured design tokens extracted from https://blurr.ing/id/. The frontmatter above is the design system — real colors, type scale, spacing, radius, shadows, motion, and breakpoints read from the live page. Upgrade to Pro for the full written system (rationale, component guidance, and accessibility notes).
+## Pemetaan M7 (2026-11-19)
+
+Dial: **ENERGY 1 / RHYTHM 2 / MOTION 1**. UI adalah meja baca untuk peneliti yang
+memutuskan apakah kutipan mendukung suatu klaim. Form pertanyaan menjadi fokus
+awal; setelah memilih jawaban, fokus berpindah ke klaim dan sumbernya.
+
+- Navy `#0f172a` menjaga kontras teks dan menandai aksi utama. Permukaan widget
+  memakai `#f1f5f9`; token indigo lama diganti agar kutipan panjang tetap tenang.
+- Body 7px dan mono 10px hasil ekstraksi diperbaiki menjadi 16px dan 14px.
+  Caption 14px; judul responsif 1,8–3,25rem. Tinggi baris body menjadi 1,65.
+- Sans sistem menghindari unduhan font dan menjaga label mudah dipindai. Kutipan
+  memakai Georgia lokal untuk membedakan teks paper dari klaim generator.
+- Pola identitas: klaim bernomor diikuti sitasi bernomor, halaman, dan kutipan
+  yang dapat dibuka. Nomor adalah referensi bukti, bukan dekorasi.
+- Lebar baca maksimum 62rem. Urutan satu kolom berlaku pada ponsel, tablet,
+  dan desktop; padding mengecil di 640px. Teks panjang membungkus.
+- Radius mengikuti widget native; tanpa shadow besar, glass, gradien, logo,
+  ilustrasi, atau animasi dekoratif. Fokus keyboard memakai slate `#64748b`.
+- Tema terang mendukung pembacaan paper. Toolbar developer disembunyikan dengan
+  mode minimal; UI tidak menyediakan toggle tema. Gerak dinonaktifkan ketika
+  pengguna memilih reduced motion.
+
+Tema berada di `.streamlit/config.toml`; aturan tipografi dan reflow berada di
+`src/rag/ui/style.css`. Pemetaan memakai [konfigurasi tema resmi Streamlit](https://docs.streamlit.io/develop/concepts/configuration/theming).

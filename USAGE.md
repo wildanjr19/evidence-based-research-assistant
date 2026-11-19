@@ -282,6 +282,61 @@ batas output, timeout, dan nol retry. Kontrak endpoint mengikuti
 [Chat Completions Surplus](https://preview.surplusintelligence.ai/docs/api-reference/chat-completions).
 Transport/runner diuji dengan mock dan inference nyata pada M6. Run berbayar memakai 30 request DeepSeek dan 28 judge; replay tanpa `--allow-api` memakai nol request baru. Lihat [laporan M6](eval/results/2026-11-19T01-25-11Z_7492c6/m6-summary.md).
 
+## UI Streamlit dan demo lokal
+
+Jalankan dari root repo dengan Python `.venv` langsung. Streamlit sudah menjadi
+dependensi proyek; jangan menyinkronkan ulang environment CUDA hanya untuk UI.
+
+```powershell
+.venv/Scripts/python.exe -m streamlit run src/rag/ui/app.py --server.address 127.0.0.1 -- --config data/m6-multipaper/20261119T004114Z/config-citations-surplus-gpt-authorized-v1.yaml
+```
+
+Buka `http://127.0.0.1:8501`. Command ini memakai database lokal empat paper M6,
+bukan `data/index/corpus.db` dari smoke test lama. Direktori demo default adalah
+`eval/results/2026-11-19T01-25-11Z_7492c6`. Untuk evaluasi lain, tambahkan
+`--demo-dir eval/results/<run_id>` setelah separator `--` dan gunakan config
+lengkap dengan `paths.db_path` yang cocok. UI membandingkan hash seluruh chunk
+dengan manifest run sebelum menawarkan contoh; ID jawaban dan pertanyaan juga
+harus cocok dengan database. Repo tidak membawa database atau PDF.
+
+**Demo tersimpan** membaca jawaban, klaim, metadata paper, dan label verifikasi
+yang sudah disimpan. Teks kutipan selalu dibaca dari SQLite kanonis. Mode ini
+tidak memuat model, menulis database, atau memanggil API. Label judge ditampilkan
+terpisah dan tidak menggantikan MiniCheck. Label yang hilang tetap belum
+diverifikasi, bukan supported. Klaim dengan satu sitasi yang tidak mendukung
+tetap ditandai perlu diperiksa meski sitasi lain didukung.
+
+**Tanya korpus** menerima pertanyaan dan empat mode retrieval. Setiap submit
+membuat salinan SQLite baru di `paths.cache_dir/ui-runs/<run_id>/`; retrieval
+membaca salinan itu dan indeks asli. Generation/verifikasi menulis hanya ke
+salinan dan laporan baru di direktori tersebut. Model dan cache tetap mengikuti
+config. Retrieval dan MiniCheck dapat memuat bobot lokal atau mengunduhnya bila
+belum tersedia. UI tidak menyediakan flag `allow_api`, tidak menjalankan judge,
+dan tidak mengirim request LLM berbayar. Cache LLM yang belum tersedia menjadi
+status gagal; hasil retrieval kosong menjadi "tidak ada bukti". Kegagalan
+verifier tetap mempertahankan jawaban dengan label belum diverifikasi.
+
+Siapkan respons baru lewat CLI generation/evaluasi dengan izin API dan batas
+request terpisah. Gunakan pertanyaan, mode retrieval, config model, dan konteks
+yang sama agar cache cocok. Izin batch M6 tidak diperluas oleh penggunaan UI.
+Jangan menjalankan build indeks bersamaan dengan query. Salinan query dan
+rekaman demo berada di `data/`, tidak masuk Git.
+
+Urutan demo singkat:
+
+1. Pilih contoh pertama tentang empat dataset LegalBench-RAG.
+2. Buka sitasi `[1]`; baca kutipan, halaman, section, dan lisensinya.
+3. Buka paper sumber untuk memeriksa metadata pada arXiv.
+4. Pilih pertanyaan kedua; bandingkan klaim didukung dengan klaim perlu diperiksa.
+5. Pilih kontrol `multi027` untuk penolakan kosong dan `multi029` untuk klaim
+   penolakan tanpa bukti. Hasil asli dipertahankan, tanpa perbaikan skor M6.
+6. Buka **Tanya korpus**. Submit pertanyaan kosong untuk melihat validasi; lalu
+   gunakan pertanyaan pertama dengan hybrid+rerank untuk replay cache lokal.
+
+Pengujian widget memakai [AppTest resmi Streamlit](https://docs.streamlit.io/develop/api-reference/app-testing)
+dengan fixture dan mock, tanpa API berbayar. Hasil browser, lokasi rekaman GIF,
+serta batas verifikasi mesin ini dicatat di TASKS.md bagian M7.
+
 ## Pilot Jev melalui Surplus
 
 Adapter Jev tersedia sebagai judge keputusan opsional, memakai dependensi HTTP
