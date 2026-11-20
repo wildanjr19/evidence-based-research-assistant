@@ -1,0 +1,23 @@
+bibliography_run: data/skripsi/references/2026-11-19T06-35-57Z_826ae9
+output_dir: data/skripsi/downloads
+cache_dir: data/skripsi/download-cache
+budget_path: data/skripsi/download-budget.json
+allowed_hosts:
+  - api.crossref.org
+  - aclanthology.org
+  - bright-journal.org
+  - www.bright-journal.org
+  - beei.org
+  - www.beei.org
+  - www.nature.com
+  - nature.com
+preferred_keys: [Setiawan2024, Yulianti2024, Koto2021, Scaria2024, Wilie2020, Lu2025, Koto2020, Rainio2024]
+allowed_licenses: [CC-BY-4.0, CC-BY-3.0, CC-BY-SA-4.0, CC0-1.0]
+max_requests: 30
+max_pdfs: 5
+max_pdf_bytes: 52428800
+max_metadata_bytes: 2097152
+request_delay_seconds: 3.0
+timeout_seconds: 30.0
+max_redirects: 3
+min_title_coverage: 0.9

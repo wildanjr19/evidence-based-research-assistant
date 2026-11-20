@@ -4,6 +4,9 @@ Milestone pengerjaan. Aturan: satu milestone selesai sebelum lanjut, dan "selesa
 
 Spesifikasi teknis tiap milestone ada di `ARCHITECTURE.md`; jangan mengubah skema data atau format ID/sitasi selama implementasi tanpa memperbarui dokumen itu lebih dulu.
 
+Rencana lanjutan untuk korpus referensi Mendeley pengguna ada di
+[TASKS-SKRIPSI.md](TASKS-SKRIPSI.md). Riwayat dan hasil MVP M0–M7 di bawah tetap berlaku.
+
 ---
 
 ## M0 — Fondasi repo
@@ -977,6 +980,556 @@ dial, palet, motif, dan sumber data tetap; tanpa aset atau navigasi baru.
 ini. Mengaktifkan checkbox dapat memakai kuota; batas dua adalah per submit,
 bukan anggaran seluruh sesi. Pertanyaan boleh baru, tetapi jawaban tetap hanya
 dari paper dalam korpus. Ponsel fisik, screen reader, dan GPU belum diuji.
+
+## Lanjutan korpus skripsi — S0–S1 (2026-11-19)
+
+Scope aktif beralih ke referensi skripsi pengguna tanpa mengubah benchmark
+M0–M7. Checklist rinci dan persetujuan ada di [TASKS-SKRIPSI.md](TASKS-SKRIPSI.md).
+Importer offline `rag.ingestion import-bib` memakai `bibtexparser==2.1.0` yang
+disetujui pengguna; parser dan transitif `pylatexenc==2.11` dikunci di uv.lock.
+Tidak ada perubahan skema SQL, ID/sitasi, atau peran model runtime.
+
+Input pengguna berisi 83 entri, menghasilkan 82 referensi audit dengan duplikat
+`Rahmatia2025` tetap terlacak, nol blok gagal, dan 21 entri tanpa DOI. Laporan
+awal dan replay berada di `data/skripsi/references/`; hasil entries/references
+identik. Hash 213 file terlindungi (input, benchmark M6, label, dan eval) tetap
+sama. Ekspor BibTeX diabaikan Git karena memuat abstrak. PDF skripsi belum ada.
+
+**Verifikasi:** 426 test lulus, termasuk 22 test baru; Ruff lint/format bersih.
+Test baru memakai metadata sintetis dan tidak memanggil jaringan/API berbayar.
+PyTorch tetap `2.15.0+cu132`; instalasi tambahan tidak menyinkronkan environment.
+Antislop DURING mengikuti pilihan sesi; tanpa perubahan UI/aset, gate visual
+tidak berlaku. Antislop-code: satu komentar baru menjelaskan middleware duplikat
+parser, tanpa cleanup komentar lain atau komentar yang menarasikan langkah.
+
+**Berikutnya:** S2 pilot maksimum 5 PDF dan 30 request jaringan pada sumber yang
+disetujui. Belum ada request pengunduhan paper atau API LLM pada S0–S1.
+
+## Lanjutan korpus skripsi — pilot S2 (2026-11-19)
+
+Pengunduh `rag.ingestion download-bib` sudah tersedia dengan config terpisah,
+default offline, allowlist host, cache berhash, ledger lintas run, dan lock
+kampanye. Tidak ada dependensi baru atau perubahan skema/ID/sitasi. Batas tetap
+5 PDF dan 30 request, termasuk redirect/kegagalan; HTML penangguhan lengkap
+bukan PDF, sedangkan hasil transfer yang tidak diketahui tetap menahan slot.
+
+Pilot menghasilkan Yulianti2024 (11 halaman, CC-BY-SA-4.0), Koto2021 (9),
+Scaria2024 (17), Wilie2020 (15), dan Lu2025 (14); empat terakhir CC-BY-4.0.
+Identitas diperiksa otomatis melalui Crossref, halaman artikel, dan dua halaman
+awal PDF. Versi yang belum dinyatakan tetap `publisher_linked_pdf`, dengan hash
+snapshot; bukan klaim versi penerbit definitif atau audit manual seluruh penulis.
+
+Total 26 request dan 5 PDF (6 percobaan tautan; 1 menghasilkan HTML). Replay
+offline `data/skripsi/downloads/2026-11-19T06-53-52Z_57a5ae/` memakai nol request.
+Laporan kumulatif: 5 siap, 1 gagal unduh (Setiawan2024: penangguhan situs),
+2 perlu pencocokan (host Koto2020/Rainio2024 di luar allowlist), 74 belum dicoba.
+Laporan percobaan awal tetap ada; perbaikan angka afiliasi nama diuji dengan
+fixture lalu diterapkan pada run baru. Hash 213 file terlindungi tetap sama.
+
+**Verifikasi:** 459 test lulus, termasuk 33 test downloader baru; Ruff lint/format
+bersih. Tidak ada API LLM berbayar, perubahan model, PDF/isi korpus di Git,
+atau penulisan database/index benchmark. Antislop DURING: tidak ada perubahan
+UI/aset, gate visual tidak berlaku; komentar baru terbatas pada alasan teknis.
+
+**Batas:** pilot belum mencakup full text Indonesia, bab buku, atau laporan.
+Checklist cakupan bahasa S2 tetap terbuka di TASKS-SKRIPSI.md; lima PDF yang
+siap dapat diproses sebagai pilot S3. Pengumpulan tambahan perlu batas batch
+baru; jangan mereset ledger karena masih ada empat request yang belum dipakai.
+Satu run test mengalami kunci file sementara Windows (`WinError 32`);
+pengulangan suite lengkap kemudian lulus 459 test, tanpa mengubah helper I/O.
+
+## Lanjutan korpus skripsi — S3 pilot (2026-11-19)
+
+`prepare-bib` memvalidasi laporan S2 dan mengisi skema paper yang sudah ada.
+Namespace `crossref:<DOI>_sha256_<SHA-256 PDF>` diterima regex ID umum yang
+sama; tidak ada perubahan skema atau format chunk/sitasi. Hash membedakan
+snapshot tanpa mengarang versi publikasi, dan mapping citation key/reference ID
+tetap ada pada laporan prepare. Pengulangan menjaga metadata dan parse status.
+
+Config `configs/skripsi-pilot.yaml` memisahkan korpus di
+`data/skripsi/pilot-v1/`, dengan shared cache model/embedding lama. Lima paper,
+66 halaman, nol gagal parse; 310 chunk = 310 vektor = 310 FTS. Chunking 220/40/60
+leksikal dengan drop menghasilkan 394 token pendek/ekor yang dibuang, tanpa
+truncation model. Maksimum tokenizer BGE 384/512. BGE base revisi lama dipakai
+di CPU batch 16, seed 42; 310 embedding baru nyata, indeks pertama 48,60 detik.
+
+Replay prepare/parse/chunk/index memakai 310 cache hit, nol embedding baru,
+dan hash logis paper/chunk/FTS/vektor identik. Indeks replay 1,76 detik setelah
+model tersedia. Laporan indeks pertama `2026-11-19T07-08-21Z_9a1442`, replay
+`2026-11-19T07-11-55Z_558ba7`, dan retrieval smoke
+`data/skripsi/pilot-v1/reports/retrieval-smoke-2026-11-19T07-11-58Z_e35509.json`.
+Mode offline Hugging Face digunakan; ledger unduhan tetap 26/30. Hash 213 file
+terlindungi input/M6/label/eval tetap sama. Tidak ada API LLM berbayar.
+
+AI memeriksa visual satu halaman per dokumen; bukti ada di quality-review
+lokal. Narasi dapat ditelusuri, tetapi tabel rata, section kadang salah, dan
+header/glyph tersisa. Ini bukan audit manusia atau jaminan akurasi seluruh PDF.
+Nomor halaman chunk tetap halaman PDF, berbeda dari nomor cetak. Flag kualitas
+nol tidak berarti tidak ada kesalahan parsing; angka tabel perlu dibuka pada PDF.
+
+Smoke 12 pertanyaan draf AI (6 per bahasa) menemukan paper target dalam top-5:
+Inggris BM25/dense 6/6; Indonesia BM25 5/6, dense 6/6. Ranking/skor replay
+identik. Ini bukan gold manusia, bukan accuracy benchmark, dan belum mengukur
+faithfulness jawaban. BGE Inggris dipertahankan; penggantian model belum
+dibenarkan oleh smoke kecil ini. Full text Indonesia belum tersedia di pilot.
+
+**Verifikasi:** 468 test lulus, sembilan test baru admission dan integrasi
+prepare/parse/chunk/index dengan mock embedder; Ruff lint/format bersih. Tidak
+ada dependensi baru, data korpus di Git, pengubahan skor/label M6, atau UI/aset
+baru. Antislop DURING: gate visual tidak berlaku; komentar mengikuti batas
+antislop-code, tanpa cleanup komentar di luar tugas. GPU inference dan puncak
+RAM/VRAM belum diuji/diukur. Berikutnya S4 Streamlit dan QA bersitasi pada pilot.
+
+## S4: integrasi Streamlit korpus skripsi (2026-11-19)
+
+S4 pilot selesai untuk integrasi dan kontrak QA. Perintah di USAGE.md bagian S4;
+catatan rinci serta batas verifikasi di TASKS-SKRIPSI.md bagian S4. UI menerima
+`--bibliography-report <prepare-S3>` dan memeriksa paper/PDF snapshot, citation
+key, hash laporan unduhan, serta hash referensi. Header memisahkan 82 referensi
+dari 5 paper/310 chunk. Default pilot membuka form, tanpa demo M6. Kutipan,
+halaman PDF, lisensi, dan URL tetap dari SQLite kanonis; ID chunk/skema tetap.
+Jawaban sesi dan izin API direset ketika identitas korpus/config berubah.
+
+Hasil: **477 test lulus dalam 22,60 detik**, Ruff lint dan 106 file format bersih.
+Sembilan test UI baru mencakup binding metadata, jumlah, indeks BM25 tidak lengkap,
+snapshot/provenance salah, kutipan, dan reset izin. Hybrid+rerank CPU nyata
+offline dijalankan pada empat skenario (faktual Inggris/Indonesia, lintas paper,
+luar korpus), 200 pasangan dihitung dan replay memakai 200 cache hit dengan
+ranking/skor sama. Generation memakai mock beridentitas model/cache terpisah;
+verifier sengaja membiarkan klaim belum diverifikasi. Tidak ada request provider
+berbayar nyata. Ini bukan evaluasi kualitas atau abstention DeepSeek pada skripsi.
+
+Artefak lokal: `data/skripsi/pilot-v1/ui-review/`, berisi
+`qa-matrix-20261119T074300Z.json`, `browser-validation.json`,
+`browser-fixture-validation.json`, `contrast-validation.json`,
+`control-measurements.json`, `integrity.json`, PNG, dan skrip QA.
+Browser memakai server lokal terpisah pada port 8502 (UI asli) dan 8503 (fixture
+berbanner). Fixture membaca keluaran mock dan kutipan pilot, bukan hasil API.
+Keduanya ditutup setelah verifikasi; tidak mengubah server pengguna.
+URL sumber membuka tab baru; status HTTP halaman tidak diuji ulang.
+
+213 hash berkas M6/evaluasi/BibTeX terlindungi tidak berubah; database pilot juga
+tidak ditulis oleh query. Tidak ada file `data/` yang dilacak Git. Ledger
+downloader tetap 26/30 request dan lima PDF. Tidak ada dependensi baru pada S4.
+Model runtime tetap DeepSeek/MiniCheck; S5 berikutnya memerlukan evaluasi
+skripsi terpisah serta izin konkret untuk batch LLM baru.
+
+### Delivery Gate antislop S4
+
+Design Read sebelum implementasi: meja baca bagi peneliti skripsi, satu kolom,
+klaim/sitasi bernomor, dial **ENERGY 1 / RHYTHM 2 / MOTION 1** dari DESIGN.md.
+Antislop DURING mengikuti pilihan pengguna. Pemeriksaan berlaku pada tema terang
+yang dikirim; bukan sertifikasi WCAG atau pengukuran kualitas model.
+
+| Item | Status dan bukti |
+|---|---|
+| Hard R-02 | PASS: copy UI baru tanpa em dash; kutipan sumber dipertahankan verbatim. |
+| Hard R-03 | PASS: JSON browser mencatat nol overflow pada tujuh viewport 320–1280px, termasuk kutipan dan teks 200%. |
+| Hard R-17 | PASS: angka 82/5/310 berasal dari bibliografi berhash, SQL, dan indeks BM25. |
+| Hard R-18 | PASS: tidak ada testimoni atau identitas orang fiktif. |
+| Hard R-23 | PASS: tidak membuat aset visual atau navigasi produksi baru; PNG hanya bukti QA. |
+| Hard R-24 | PASS: daftar korpus/sitasi terbuka; tautan sumber memakai URL tersimpan dan membuka tab. |
+| Hard R-25 | PASS: checker skill mengukur 40 elemen teks, minimum 4,57:1; fokus/border slate di atas 3:1. |
+| Hard R-26 | PASS: form kosong, submit, pilihan retrieval, checkbox, dan ekspander diuji browser/AppTest. |
+| Hard R-27 | PASS: validasi kosong, spinner berteks, cache miss, error provider, dan tanpa bukti memiliki pesan berbeda. |
+| Hard R-28 | PASS: tidak ada FAQ. |
+| Hard R-32 | PASS: Tab memindahkan fokus, Enter membuka/menutup sitasi, Space mengubah checkbox, Escape menutup dropdown. |
+| Hard R-33 | PASS: fitur ditulis pada Python/CSS source; skrip browser hanya QA. |
+| Hard R-34 | PASS: satu tema terang, tanpa toggle tema tambahan; seluruh viewport diperiksa. |
+| Hard R-35 | PASS: dua server Streamlit dijalankan dan kontrol diperiksa; JSON/PNG menyimpan hasil serta batas fixture. |
+| Hard R-36 | PASS: tidak mengklaim akurasi, keamanan, atau performa produk dari fixture. |
+| Hard R-37 | PASS: arah DESIGN.md dan dial 1/2/1 dipakai sebelum perubahan. |
+| Hard R-38 | PASS: metadata/kutipan berasal dari korpus; keluaran mock di browser diberi banner fixture. |
+| Hard R-39 | PASS: kontrol native bernama, label terlihat, target 44px terukur, fokus solid, lang id, title, h1/h2, main, dan reduced motion tersedia. |
+| Hard R-40 | PASS: tanpa media/font eksternal atau script pihak ketiga baru; model hanya dimuat saat query. |
+| Purpose R-01 | PASS: navy menandai teks/aksi; tidak ada gradien. |
+| Purpose R-04 | PASS: ikon native hanya untuk aksi/state widget yang sudah ada. |
+| Purpose R-06 | PASS: sans memudahkan pemindaian, Georgia membedakan kutipan; sesuai DESIGN.md. |
+| Purpose R-07 | PASS: tanpa grid atau pola latar dekoratif. |
+| Purpose R-08 | PASS: label tombol berupa aksi, tanpa panah dekoratif. |
+| Purpose R-09 | PASS: status berbentuk teks pada klaim, tanpa capsule badge. |
+| Purpose R-10 | PASS: tidak memakai glassmorphism. |
+| Purpose R-12 | PASS: tidak menambah shadow besar. |
+| Purpose R-13 | PASS: tidak memakai glow. |
+| Purpose R-14 | PASS: daftar paper dan klaim mengikuti isi, tanpa feature cards. |
+| Purpose R-19 | PASS: tidak menambah animasi; reduced motion tetap pada CSS. |
+| Purpose R-22 | PASS: tidak membuat ilustrasi. |
+| Liveliness dial | PASS: ENERGY 1 / RHYTHM 2 / MOTION 1 tertulis di DESIGN.md. |
+| Liveliness konsistensi | PASS: form, daftar sumber, dan kutipan tetap tenang dalam satu kolom. |
+| Liveliness fokus | PASS: form menjadi fokus awal pilot; klaim dan bukti menjadi fokus hasil. |
+| Liveliness whitespace | PASS: padding/jarak memisahkan form, klaim, dan sumber di PNG ponsel/desktop. |
+| Liveliness aksen | PASS: navy untuk aksi, slate untuk fokus, palet tetap. |
+| Liveliness identitas | PASS: citation key, nomor klaim/sitasi, halaman PDF, dan kutipan berulang sesuai isi. |
+| Liveliness Design Read | PASS: arah meja baca/dial dinyatakan sebelum perubahan UI. |
+| Craft C-1 | PASS: daftar korpus menjelaskan cakupan; key/halaman memudahkan penelusuran bibliografi. |
+| Craft C-2 | PASS: setiap kontrol baru/terdampak mempunyai perilaku yang diuji. |
+| Craft C-3 | PASS: penambahan hanya cakupan korpus dan bukti sitasi. |
+| Craft C-4 | PASS: form/error/kutipan, tujuh lebar, teks 200%, dan keyboard diperiksa; perangkat ponsel fisik belum diuji. |
+| Craft C-5 | PASS: fixture tidak dipresentasikan sebagai hasil DeepSeek atau label manusia. |
+| Quality R-05 | PASS: urutan form/klaim/sumber mengikuti tugas membaca, tanpa template promosi. |
+| Quality R-11 | PASS: widget native mempertahankan radius, tanpa bentuk pill seragam. |
+| Quality R-15 | PASS: aksi memakai Cari bukti dan Buka paper sumber. |
+| Quality R-16 | PASS: copy menjelaskan batas korpus/API, tanpa buzzword promosi. |
+| Quality R-20 | PASS: identitas berupa klaim/citation key/halaman/kutipan yang khusus untuk pembacaan paper. |
+| Quality R-21 | PASS: tema terang yang sudah ditetapkan, tanpa dark mode baru. |
+| Quality R-29 | PASS: palet DESIGN.md tetap, tanpa warna baru. |
+| Quality R-30 | PASS: meja baca tetap, tanpa menyalin produk lain. |
+| Quality R-31 | PASS: alasan setiap perubahan visual tercatat di DESIGN.md; komentar baru hanya menjelaskan binding snapshot. |
+| Antislop-code | PASS: tidak ada komentar dekoratif atau cleanup di luar scope; docstring helper menjelaskan kontrak provenance. |
+
+Seluruh gate lulus dalam batas pemeriksaan di atas. Jawaban/verifikasi semantik
+DeepSeek pada pilot skripsi belum diuji nyata; tidak ada skor manusia baru.
+
+## S5a: RAGAS dan pilot nyata skripsi (2026-11-19)
+
+Integrasi RAGAS dan pilot empat pertanyaan selesai. **S5 keseluruhan masih
+terbuka**, karena batch penuh, perbandingan verifier, dan keputusan
+runtime belum selesai. Pengguna menyetujui 20 draf AI dan audit kecil setelah
+meminta pengurangan anotasi manual; lalu menyetujui batas API pilot yang konkret.
+Rincian hasil/temuan di TASKS-SKRIPSI.md bagian S5a; perintah di USAGE.md bagian S5.
+
+RAGAS `0.4.4` dipasang pada environment tersendiri, memakai
+`eval/ragas-requirements.lock` dengan versi dan hash seluruh paket. Dependensinya
+akan mengganti SDK OpenAI/Rich jika dipasang ke environment utama, sehingga
+environment CUDA tidak disinkronkan. Pytest dan PyMuPDF pada lock evaluasi
+mendukung fixture integrasi yang sudah ada. Runtime UI/SQL/ID sitasi tetap.
+
+`eval/prepare_skripsi_ragas.py` mengekspor 20 draf AI (15 lookup, 2 comparison,
+3 unanswerable) dengan ID/hash chunk sumber. Ini bukan testset generation LLM
+RAGAS atau anotasi manusia. Acuan dan field `gold_*` tetap berstatus
+`ai_draft_unreviewed`. `rag.evaluation.ragas prepare` membuat snapshot, laporan
+generation, manifest berhash byte, serta audit Markdown/JSONL maksimal sepuluh
+referensi. Acuan AI terlihat; prediksi judge tidak ditampilkan. Audit manusia
+atas acuan dicatat terpisah di bawah. Artifact teks penuh tetap di `data/`, tidak dilacak Git.
+
+Adapter RAGAS memakai CachedLLM/Judge proyek: cache-first, batas batch, output
+2048 token, prompt judge maksimal 65536 byte, nol retry jaringan/format judge,
+dan telemetri RAGAS mati. Skor awal faithfulness memakai semua konteks; context
+recall memakai acuan AI dan tidak dihitung untuk unanswerable. Tidak mengganti
+precision sitasi atau verifier pasangan klaim/chunk. Pernyataan NLI yang hilang/
+berubah, verdict di luar 0/1, skor nonfinite, budget habis, dan keluaran rusak
+tetap gagal/unknown, dengan coverage dan rerata subset terpisah. Hash dataset
+memakai byte agar newline Windows tidak menyebabkan mismatch palsu.
+
+**Izin dan penggunaan:**
+`data/skripsi/s5-ragas/api-authorization-pilot4-v1.json` mengikat empat qid,
+hash dataset/korpus, model, dan batas 8 DeepSeek + 12 GPT-4o-mini/Surplus.
+Fase berbayar memakai marker reservasi sekali jalan; setelah crash jangan
+mengulang jatah penuh. Aktual **4/11 request**, token generation 15414/1909
+input/output dan judge 26240/2733. Usage diketahui seluruhnya; biaya USD tetap
+null karena tarif gateway belum diverifikasi. Sisa jatah tidak dipakai untuk
+eksperimen tambahan. JEV tidak dipanggil.
+
+**Skor mentah RAGAS:** faithfulness 0,805556 pada empat jawaban; context recall
+terhadap acuan AI 0,833333 pada tiga pertanyaan answerable. Tidak ada sitasi yang
+ditolak parser. Kontrol unanswerable menolak menjawab tetapi menulis satu klaim
+unsupported tanpa sitasi, sehingga abstention ketat **0/1**. Hasil asli tidak
+diubah. Inspeksi AI juga menemukan dekomposisi penolakan kehilangan pembatas
+dataset pribadi/tanggal dan flag atribusi nama penulis; skor tersebut bukan
+akurasi manusia atau bukti bahwa setiap flag merupakan kegagalan retrieval.
+
+Artefak asli di `data/skripsi/pilot-v1/reports/evaluation/`:
+
+- Generation: `ragas-inputs-2026-11-19T08-26-41Z_8ba4d6`.
+- Skor: `ragas-scores-2026-11-19T08-27-42Z_4ee90c`.
+- Replay generation: `ragas-inputs-2026-11-19T08-30-14Z_ec8e39`, empat cache hit,
+  nol request; konteks, klaim, dan sitasi sama, kecuali ID run internal baru.
+- Replay judge: `ragas-scores-2026-11-19T08-30-16Z_b0f606`, 11 cache hit,
+  nol request; skor/trace identik.
+- Audit 10 referensi: `ragas-inputs-2026-11-19T08-17-12Z_9d2275/reference-audit.md`.
+
+Receipt fase, persetujuan, dan integritas sumber ada di
+`data/skripsi/s5-ragas/`. Hash 213 berkas terlindungi serta korpus pilot tidak
+berubah; ledger downloader tetap 26/30 dan lima PDF. Tidak ada data dilacak Git,
+key baru, atau modifikasi benchmark M6. Script pembuatan draf baru dan lockfile
+evaluasi ditambahkan secara eksplisit; dataset lama tidak diganti.
+
+**Verifikasi:** 484 test utama lulus, satu modul opsional RAGAS dilewati karena
+dependensinya terisolasi. Seluruh 16 test evaluasi (termasuk tujuh test unit yang
+juga ada pada suite utama) lulus di environment RAGAS. Test ini memakai library
+RAGAS nyata dengan provider mock dan jaringan diblokir: skor 0/1, recall, replay,
+JSON/verdict/statements salah, batas byte, budget global, pipeline snapshot,
+provenance stale, dan hash CRLF. Ruff lint/format dan diff bersih. API nyata hanya
+dipanggil melalui skrip evaluasi setelah izin pengguna, bukan oleh pytest.
+
+### Delivery Gate antislop S5a
+
+| Item | Status dan bukti |
+|---|---|
+| Antislop DURING | PASS: mode mengikuti pilihan sesi; perubahan hanya backend, script evaluasi, dan dokumentasi. |
+| Hard Gate visual/interaksi | Tidak berlaku: source UI, CSS, tema, navigasi, serta aset tidak diubah pada S5a; hasil S4 dipertahankan. |
+| R-17/R-36/R-38 | PASS: skor dari laporan nyata; acuan AI, keterbatasan judge, biaya unknown, dan ketiadaan label manusia atas klaim generation dinyatakan. |
+| R-35/C-2/C-4 | PASS: pipeline nyata empat pertanyaan dan replay nol API berjalan; unit/integrasi memeriksa cache dan kegagalan. |
+| R-23/R-33 | PASS: tidak membuat aset visual; Python ditulis di source, skrip lokal hanya menjalankan batch yang disetujui. |
+| Purpose Gate | PASS: tidak ada teknik visual baru; environment terpisah menghindari konflik SDK yang ditunjukkan dry-run. |
+| Liveliness/direction | Tidak berlaku untuk backend; dial UI 1/2/1 pada DESIGN.md tetap. |
+| Craft C-1/C-3/C-5 | PASS: scope dibatasi dua metrik awal, provenance, audit kecil, dan pilot; tidak mengklaim S5 atau gold manusia selesai. |
+| Antislop-code/R-31 | PASS: komentar singkat menjelaskan pemisahan environment, telemetri, dan status acuan; tanpa komentar dekoratif/cleanup di luar scope. |
+
+**Audit pengguna 2026-11-19:** sepuluh acuan ditinjau, sembilan sesuai dan satu
+bukti belum cukup (`skripsi-draft-018`). Nomor 2/001
+yang belum dicentang disetujui lewat konfirmasi chat. Label versi baru, salinan
+lembar, konfirmasi, serta manifest hash ada di
+`data/skripsi/s5-ragas/reviews/2026-11-19T09-44-55Z_f06733/`.
+Seluruh isi lembar selain checkbox cocok dengan sumber awal; teks bukti juga
+cocok dengan chunk database. Acuan 018 tetap unknown, sepuluh acuan lain belum
+ditinjau; dataset/skor asli tidak berubah dan tidak ada API baru. Audit dibantu
+acuan AI yang terlihat, bukan penilaian buta atau akurasi klaim generation.
+User kemudian menambahkan alasan bahwa kutipan 018 hanya dari abstrak dan
+memerlukan contoh empiris dari bagian lain. Versi lanjutan
+`data/skripsi/s5-ragas/reviews/2026-11-19T09-48-57Z_3046bb/` mencatat catatan
+itu serta `evidence-proposal-018.md`: empat chunk isi paper dari halaman PDF
+3/4 IndoNLU dan 2/3 IndoBERTweet. Usulan AI belum ditinjau; label 018 tetap
+insufficient, tanpa perubahan dataset/skor atau request API. Hash chunk dan
+perbedaan lembar audit diperiksa; perubahan pengguna hanya catatan nomor 10.
+Pencatatan ini hanya mengubah dokumentasi dan artefak lokal; suite di atas
+merupakan verifikasi kode S5a sebelumnya, bukan pengujian ulang audit ini.
+
+**Penutupan audit kecil:** user menerima revisi bukti 018 melalui checkbox.
+Versi `data/skripsi/s5-ragas/reviews/2026-11-19T09-51-25Z_b9f906/` memuat
+sembilan acuan awal diterima dan satu acuan revisi diterima, dengan hash serta
+salinan persetujuan. Persetujuan hanya berlaku pada revisi dan empat chunk
+barunya; acuan 018 lama tidak dipromosikan secara retroaktif. Sepuluh acuan
+lain belum ditinjau, dataset/skor asli tetap, 213 hash terlindungi sama, nol API.
+
+Berikutnya evaluasi sisa pertanyaan dan perumusan evaluasi verifier. Eksekusi sisa
+16 pertanyaan berbayar memerlukan batch baru; jangan memperluas izin pilot ini.
+
+### S5b: persiapan batch lanjutan (2026-11-19)
+
+Selector `rag.evaluation.ragas prepare --offset 4 --limit 16` tersedia dan diuji:
+manifest mengikat qid 005–020 dengan hash dataset utuh; dataset/label lama tetap.
+Run offline `ragas-inputs-2026-11-19T09-59-06Z_8087a3` menghasilkan retrieval CPU
+nyata dan 16 cache miss generation, nol request. Tidak ada skor baru.
+
+Rencana belum diizinkan serta 12 pasangan verifier dibekukan di
+`data/skripsi/s5-ragas/continuation-20261119T095905Z/`. Batas usulan:
+32 DeepSeek, 46 GPT RAGAS, 12 JEV 1.14 dan 12 GPT verifier (total GPT 58).
+Kriteria, provenance, kebijakan crash, status acuan 018 lama, serta keterbatasan
+promosi verifier dijelaskan di TASKS-SKRIPSI.md S5b. Audit kecil tidak dibuka lagi.
+
+489 test utama lulus, 1 modul opsional dilewati; 21 test di environment RAGAS
+lulus. Ruff lint/format bersih; 107 file sumber/hasil lama yang diperiksa tetap
+identik. Tidak ada perubahan dependensi, runtime, skema, sitasi, atau aset UI.
+Eksekusi berbayar menunggu persetujuan baru dengan batas konkret tersebut.
+
+### S5c: batch lanjutan selesai (2026-11-19)
+
+Pengguna menyetujui rencana S5b dengan "mari kerjakan!". Authorization mengikat
+hash rencana; tiap fase memakai marker eksklusif, tanpa retry jaringan/judge.
+Sisa 16 pertanyaan selesai: 14 jawaban, dua kontrol nol klaim, nol generation
+gagal. Faithfulness RAGAS 0,985714 (14), context recall draf AI 1,000000 (14).
+Gabungan 20 pada laporan baru: **faithfulness 0,945679 (18), context recall
+0,970588 (17), abstention ketat 2/3**. Skor dan kegagalan pilot lama tetap.
+
+Pada 12 pasangan pilot sama, MiniCheck/JEV/GPT memiliki distribusi
+supported/partial/not_supported 5/0/7, 8/4/0, dan 11/1/0. Coverage semua 12/12;
+agreement JEV/GPT 9/12, MiniCheck dengan masing-masing 5/12. Hasil bukan
+akurasi manusia; keputusan tetap DeepSeek/MiniCheck, JEV belum dipromosikan.
+Kontrol klaim salah dan full text Indonesia belum tercakup. Audit kecil ditutup.
+
+Aktual: 16 DeepSeek, 42 GPT RAGAS, 12 GPT pasangan, 12 JEV; total 82 request
+baru, GPT 54/58. Usage lengkap, biaya mata uang unknown. Seluruh replay identik
+tanpa request baru. Inspeksi AI pada 008 menemukan dekomposisi RAGAS menghapus
+pengecualian Twitter; skor mentah 0,8 dipertahankan. Acuan 018 asli tidak diganti
+dengan revisi yang disetujui. Detail token, kappa, model, latensi, run ID, dan
+keterbatasan ada di TASKS-SKRIPSI.md S5c.
+
+Paket `data/skripsi/s5-ragas/continuation-20261119T095905Z/` memuat laporan
+`summary.md`/`combined-summary.json`, verifier/analisis, authorization, marker,
+receipt, dan provenance. Generation `ragas-inputs-2026-11-19T11-34-01Z_2b0890`;
+skor `ragas-scores-2026-11-19T11-35-01Z_16f94a`. 107 file lama yang diperiksa
+dan SQLite pilot tetap identik. 489 test utama lulus, 1 modul opsional dilewati;
+21 test environment RAGAS lulus; Ruff lint/format bersih. Tidak ada perubahan
+runtime/dependensi/skema/sitasi/UI. Source utama tetap Torch CUDA 2.15.0+cu132.
+S5 masih terbuka untuk validasi verifier yang lebih kuat; batch yang disetujui
+ini sudah selesai dan sisa jatah tidak diperluas otomatis.
+
+### Pilot Docling GPU: persiapan knowledge base (2026-11-19)
+
+Pengguna menyetujui percobaan Docling setelah pembahasan komponen/VRAM.
+`rag.evaluation.docling` dan config terpisah menguji tiga halaman PDF pilot
+(Koto2021, Wilie2020, Scaria2024), native serta kontrol scan buatan 200 dpi.
+Heron/TableFormer accurate/EasyOCR id/en berjalan CUDA, batch satu; 6/6 kasus
+berhasil. Dependensi/model dikunci pada environment Docling tersendiri,
+tanpa perubahan environment CUDA utama/RAGAS, indeks, skema, sitasi, atau UI.
+
+Puncak GPU keseluruhan teramati 6718 MiB (6,56 GiB, termasuk aplikasi lain;
+polling dapat melewatkan puncak singkat). Torch allocated/reserved 2,80/5,36 GiB;
+working set proses 2,22 GiB dan private commit 9,90 GiB. Sampel ini muat 8 GiB;
+tidak menjamin seluruh ukuran PDF muat atau tabel selalu benar.
+
+Tabel sudah menjadi grid, tetapi Koto native menggabungkan nama dataset antar
+baris dan scan Scaria salah membaca header/label. Probe AI v2 8/9 native, 6/9
+scan bukan gold manusia; satu typo probe v1 dikoreksi pada manifest baru setelah
+memeriksa PDF asli, tanpa menimpa laporan awal. Grid dan hash model identik pada
+tiga run (dua offline). Parser aktif tetap PyMuPDF; integrasi chunk ditunda
+sampai kasus gagal ditangani. Full document/scan asli/full text Indonesia belum diuji.
+
+Artefak `data/skripsi/docling-pilot/summary.md`/`summary.json`, model, checkpoint,
+manifest/probe versi lama-baru dan run `2026-11-19T16-23-48Z_5915cd`,
+`2026-11-19T16-24-49Z_7a14fd`, `2026-11-19T16-26-47Z_46aa62` menyimpan bukti.
+60 hash sumber/hasil lama dan versi environment utama tetap. 492 test utama
+lulus, 1 modul opsional RAGAS dilewati; tiga test baru juga lulus di environment
+Docling. Ruff lint/format bersih. `uv pip check` menandai lima dependensi
+aplikasi yang sengaja tidak dipasang pada environment eksperimen lewat
+editable `--no-deps`; jalur Docling/test sudah dijalankan nyata.
+Detail setup, lisensi, perintah dan batas di USAGE.md/TASKS-SKRIPSI.md.
+Tidak ada API berbayar atau unduhan paper baru; pengguna sedang mengunduh PDF
+sendiri. Akurasi manusia tetap ditunda. Delivery Gate antislop DURING berlaku
+pada backend/provenance; tidak ada perubahan UI/aset visual produk.
+
+### Handoff persiapan 44 PDF
+
+Handoff persiapan 44 PDF (2026-11-19): alur dan default penahanan tabel
+meragukan disepakati setelah penjelasan kepada pengguna. KB-PREPARATION.md
+bagian 8–9 memuat pekerjaan sesi berikutnya dan peta entry point. Pengguna
+masih mengunduh PDF sendiri dan akan memberi path. Adapter/gate/chunk tabel
+belum tersedia; mulai dengan fixture dan PDF pilot pada korpus baru, lalu
+inventaris folder final setelah tersedia. Tidak ada perubahan kode/korpus atau
+pemindahan/penghapusan file pada handoff dokumentasi ini. Diff/tautan diperiksa;
+492 test + tiga test isolated sebelumnya tidak dijalankan ulang untuk handoff.
+
+### Adapter Docling penuh dan snapshot baru (2026-11-19–20)
+
+Jalur opt-in `rag.parsing.docling_pipeline extract/build`, gate blok, dan chunk
+tabel tersedia. Parser/UI aktif tetap PyMuPDF. Tiga PDF Koto/Wilie/Scaria lengkap
+berhasil pada 41 halaman: **111 chunk = 111 vektor = 111 FTS** di database baru.
+Sebanyak 36/55 tabel ditahan sebelum bukti searchable, termasuk kasus Koto;
+caption/header/catatan/halaman dijaga pada tabel yang lolos. Narasi memakai
+chunker lama dengan 546 token leksikal drop yang dilaporkan. OCR tanpa
+pembanding native masih ditahan, ambang narasi 0,8 belum dikalibrasi manusia.
+
+Build/index serta tiga query × empat mode retrieval direplay identik; ekstraksi
+JSON penuh tiga run identik, 60 hash checkpoint lama tetap. Final indeks memakai
+111 cache hit BGE dari encoding nyata run pengembangan sebelumnya, nol encoding
+baru, maksimum 349/512 token. Torch peak allocated/reserved final 1,24/1,94 GiB;
+GPU keseluruhan/RAM proses tidak diukur. Tidak ada promosi runtime, paket baru,
+API berbayar, unduhan PDF, penghapusan/pemindahan file, atau pemindahan label.
+
+Artefak final `data/skripsi/docling-full/2026-11-19T16-58-24Z_2de8bc/`:
+summary/extraction/build/index, JSON/Markdown/HTML/native comparison, smoke
+retrieval, replay, dan hash. Run pengembangan awal/antara tetap tersimpan.
+512 test utama + 18 test isolated lulus, satu modul opsional RAGAS dilewati;
+Ruff lint/format bersih. Perintah di USAGE.md; rincian kualitas/gate, provenance,
+dan batas di TASKS-SKRIPSI.md bagian adapter penuh. Batch 44 PDF, scan asli,
+full text Indonesia, generation/UI snapshot baru belum diuji.
+
+### Audit tabel Docling lanjutan (2026-11-20)
+
+Adapter memperbaiki bug tanda `-` serta mendukung header bertingkat, rowspan
+label eksplisit, konteks row-section, dan pipe/multiline yang terverifikasi.
+Pemeriksaan urutan token/tanda dan geometri diperketat; kasus salah kelompok
+header Wilie dan IndoLEM/SmSA Koto tetap ditahan. Uji enam halaman true/false
+(21 tabel per mode) mempertahankan `do_cell_matching=True`: 16 lolos berbanding
+nol pada false. Probe AI 5/6 vs 0/6, bukan akurasi manusia. Serialisasi opsi
+Pydantic diperbaiki; supplement berhash menjaga laporan lama tetap utuh.
+
+Snapshot penuh baru: **32/55 tabel searchable, 23 ditahan; 131 chunk = 131
+vektor = 131 FTS** pada 41 halaman. Sebanyak 17 tabel dipulihkan dan empat
+tabel lain ditahan karena pembanding native apostrophe rusak. Encoding CPU
+35 baru/96 cache hit, replay 131 hit, maksimum 349/512 token. Build/index dan
+12 kombinasi query/mode direplay identik. JSON mentah/model sama; 292 hash
+file lama tetap. Tidak ada promosi parser aktif, dependensi/API/PDF baru,
+penghapusan/pemindahan file, atau pemindahan label/skor.
+
+Artefak audit di
+`data/skripsi/docling-table-review/2026-11-19T17-16-57Z_47557e/`, snapshot baru
+di `full/2026-11-19T17-24-19Z_728589/`. Rincian perubahan, pemisahan kesalahan
+ekstraksi/pembanding, hasil per dokumen, serta gate di TASKS-SKRIPSI.md.
+526 test utama + 32 test isolated lulus; satu modul RAGAS dilewati; Ruff bersih.
+Runtime tetap PyMuPDF. Scan asli, full text Indonesia, generation/UI snapshot
+baru, dan batch 44 PDF belum diuji.
+
+## KB koleksi lokal penuh (2026-11-20)
+
+Sesuai instruksi pengguna, DOI/lisensi belum terverifikasi menjadi label pada koleksi
+lokal opt-in. 41 PDF/746 halaman diproses; 40 searchable, 2.514 chunk/vektor/FTS.
+Parasuraman sudah OCR tetapi nol chunk lolos kualitas; 100/308 tabel searchable.
+Replay identik, 974 chunk lama tetap; 567 test utama + 35 isolated lulus, Ruff bersih.
+UI katalog/label diuji AppTest tanpa generation. Skema/format ID/sitasi tetap;
+PDF tambahan/API berbayar/dependensi baru/penghapusan tidak dilakukan.
+Artefak: `data/skripsi/kb-local-all/2026-11-20T01-59-17Z_c95c3b/summary.md`; rincian pada TASKS-SKRIPSI.md.
+
+## Retrieval offline KB lokal penuh (2026-11-20)
+
+Evaluator retrieval lama dipakai pada snapshot wajib 41 PDF/2.514 chunk.
+36 acuan AI sementara dibekukan sebelum ranking: 16 pasangan bilingual berbukti
+(8 narasi/8 tabel, 11 paper) dan empat kontrol tanpa bukti. Bukan gold manusia.
+Target top-8: BM25 25/32, dense 22/32, hybrid 25/32, hybrid+rerank 28/32.
+Perluasan shortlist kandidat 50 menjadi 100 memulihkan satu target tetapi
+menjatuhkan satu target lain: tetap 28/32, tidak dipromosikan. Seluruh replay identik.
+
+Kutipan/header/caption/halaman dan diagnosis disimpan pada run baru
+`data/skripsi/retrieval-local-all/2026-11-20T03-14-42Z_956cb9/summary.md`.
+599 hash terlindungi tetap; target QLoRA yang terlewat memiliki bukti alternatif,
+sehingga skor target bukan akurasi semantik. Konflik F1 abstrak/tabel Dewi dicatat.
+Gate hybrid seluruh target belum terpenuhi; generation umum belum siap.
+Tidak ada generation/judge/API berbayar, parsing ulang, dependensi/PDF baru,
+cleanup atau perubahan kode produksi/default UI. 567 test lulus/1 modul dilewati;
+Ruff repo dan skrip lokal bersih. Suite isolated parser tidak diulang karena parser
+tetap. Batas/metrik/keputusan lengkap pada TASKS-SKRIPSI.md bagian evaluasi retrieval.
+Gate antislop DURING lulus dalam scope backend/provenance; UI/aset tidak berubah.
+
+## Refinement retrieval dan persiapan pilot generation (2026-11-20)
+
+Eksperimen lokal menambah kandidat token teknis dan petunjuk citation key/tabel,
+tanpa mengganti model, indeks, config/UI atau kode produksi. Development top-8
+meningkat dari 28/32 menjadi 32/32 target; validasi baru dari delapan paper lain
+tetap 16/16. Tidak ada target top-8 yang hilang; seluruh replay identik tanpa
+encoding/pasangan baru. Acuan AI sementara, bukan akurasi manusia; sampel validasi
+kecil dan dominan rujukan sumber eksplisit. Bentuk pertanyaan lain belum diuji.
+
+Artefak, kutipan/halaman, policy/freeze dan batas:
+`data/skripsi/retrieval-refinement/2026-11-20T06-24-43Z_092865/summary.md`.
+Rencana delapan pertanyaan DeepSeek Flash tersedia di `generation-plan/`, berstatus
+proposed_not_authorized: maksimum 14 request/2048 output token per request,
+maksimum total output 28672 token, pesan 65536 byte/request, tanpa retry transport;
+MiniCheck lokal, tanpa JEV/judge. Belum ada API generation/judge baru.
+567 test utama lulus/1 modul dilewati; 6 test eksperimen lulus; Ruff bersih.
+Tidak ada parsing ulang, PDF/dependensi baru, cleanup atau perubahan label/hasil lama.
+Gate antislop DURING lulus dalam scope eksperimen; UI/aset tidak berubah.
+Detail keputusan dan pekerjaan tersisa di TASKS-SKRIPSI.md bagian refinement.
+
+## Pilot DeepSeek KB penuh dan batas MiniCheck (2026-11-20)
+
+Pengguna mengizinkan pilot delapan pertanyaan dengan `boleh`; authorization
+mengikat hash rencana pada `retrieval-refinement/2026-11-20T06-24-43Z_092865/generation-plan/`.
+Fase selesai: **7/14 request DeepSeek Flash non-thinking**, **22943 input/1371 output
+token**, tanpa retry atau usage hilang. Enam jawaban menghasilkan 15 klaim/16 pasangan
+citation; nol ID ditolak, nol generation gagal. Dua kontrol nol klaim: satu ditolak
+DeepSeek nyata, satu konteks kosong tanpa API. F1 Dewi mengutip tabel 82,38%.
+
+MiniCheck lokal mendukung **6/16** pasangan dan menolak **10/16**, coverage penuh,
+tanpa overlength. Precision menurut MiniCheck 0,375; proporsi klaim supported 0,4.
+Audit AI menemukan kandidat false negative pada sumber eksplisit LoRA, Transformer
+dan tabel Dewi; prediksi/skor tidak diganti, bukan gold atau akurasi manusia.
+Generation serta MiniCheck direplay identik dengan nol request/pasangan baru.
+691 hash terlindungi tetap, SQLite/foreign keys bersih; UI/default belum berubah.
+JEV/judge tidak dipanggil. Sisa budget tidak dipakai atau diperluas otomatis.
+
+Laporan: `data/skripsi/retrieval-refinement/2026-11-20T06-24-43Z_092865/generation-plan/summary.md`.
+567 test utama lulus/1 modul dilewati, 6 guard test lulus; Ruff/diff bersih.
+Tidak ada parsing ulang, dependensi/PDF baru, cleanup atau perubahan label lama.
+Berikutnya diagnosis verifier offline pada pasangan beku; hasil pilot belum
+membuktikan kesiapan jawaban umum. Detail dan batas pada TASKS-SKRIPSI.md.
+
+## Diagnosis MiniCheck lokal, 2026-11-20
+
+Selesai atas izin pengguna, tanpa generation/API: 86 probe beku (43 view pasangan
+sumber + 43 kontrol salah AI), model/revision/threshold tetap. Baseline asli
+6/16 supported tereproduksi. Empat penolakan LoRA sensitif terhadap bahasa klaim;
+dua Transformer diterima hanya pada klaim beratribusi lebih lemah. Serialisasi
+tabel tidak memulihkan Dewi; gabungan terjemahan/atribusi menerima angka netral
+salah 1.103. Tidak ada transformasi dipromosikan atau label/skor lama diganti.
+
+Replay 86 cache hit/nol inference baru identik; input 38-371/512 token tanpa
+truncation. 741 hash terlindungi tetap; 567 test utama + empat test diagnosis lulus,
+satu modul RAGAS dilewati, Ruff lint/format bersih. Parser isolated tidak diulang.
+Laporan `data/skripsi/verifier-diagnosis/2026-11-20T12-46-00Z_5b9a21/summary.md`.
+Ini diagnosis AI setelah prediksi, bukan akurasi manusia. Berikutnya kebijakan
+pelaporan verifier dan uji independen, bukan pemilihan skor terbaik atau batch
+berbayar otomatis. Detail/batas pada TASKS-SKRIPSI.md.
 
 ## Backlog (v2, jangan dikerjakan sebelum M7)
 

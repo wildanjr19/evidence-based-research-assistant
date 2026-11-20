@@ -12,7 +12,7 @@ Proyek ini adalah sistem **Retrieval-Augmented Generation (RAG)** yang berjalan 
 
 **Ruang lingkup (v1):**
 
-- Satu domain sempit (misal: *RAG evaluation* atau topik lain yang dipilih), sekitar 100-500 paper open access.
+- Korpus referensi skripsi pengguna dari ekspor BibTeX Mendeley; mulai dengan 5–10 dokumen open access berlisensi jelas.
 - Ingestion paper berizin (metadata dan full text), indexing, dan hybrid retrieval.
 - Tanya-jawab dengan sitasi per klaim.
 - Evaluasi ketepatan sitasi.
@@ -22,7 +22,18 @@ Proyek ini adalah sistem **Retrieval-Augmented Generation (RAG)** yang berjalan 
 
 **Pengguna utama (v1):** peneliti akademik yang perlu memetakan literatur dan menelusuri bukti dengan cepat.
 
-**Domain v1:** *RAG evaluation*. Korpus dibatasi pada paper arXiv open access di domain ini; domain lain di luar scope v1.
+**Arah pengembangan aktif (2026-11-19):** evidence-based assistant untuk referensi
+skripsi pengguna. Seluruh 83 entri dalam `reference-skripsi.bib` masuk audit;
+hasil impor awal memetakan 82 referensi berdasarkan DOI atau metadata identik.
+Referensi mencakup NLP, aspect-based sentiment analysis, evaluasi model, dan
+kualitas layanan kesehatan; ini deskripsi bibliografi, bukan penetapan judul skripsi.
+Pertanyaan Indonesia dan Inggris menjadi target pengujian. Jumlah referensi
+tidak menjamin jumlah PDF berlisensi yang tersedia atau berhasil diindeks.
+
+Benchmark MVP *RAG evaluation* empat paper tetap dipertahankan terpisah sebagai
+hasil historis; target awal 100–500 paper tidak menjadi syarat korpus skripsi.
+Impor/audit BibTeX sudah tersedia, sedangkan pengunduhan sumber tambahan dan
+pipeline skripsi berikutnya dilacak di [TASKS-SKRIPSI.md](TASKS-SKRIPSI.md).
 
 **Tipe pertanyaan yang wajib didukung:**
 
@@ -39,7 +50,7 @@ Proyek ini adalah sistem **Retrieval-Augmented Generation (RAG)** yang berjalan 
 
 | # | Goal | Indikator keberhasilan |
 |---|------|------------------------|
-| 1 | Membangun pipeline ingestion paper open access dengan metadata lisensi | 100-500 paper terindeks, setiap paper punya info sumber dan lisensi |
+| 1 | Membangun korpus dari referensi skripsi dengan metadata lisensi | Setiap referensi memiliki status; dokumen yang memenuhi syarat terindeks dengan sumber dan lisensi jelas |
 | 2 | Retrieval yang akurat lewat pendekatan hybrid | Hybrid (+rerank) mengungguli BM25 dan dense saja pada metrik retrieval |
 | 3 | Jawaban dengan sitasi per klaim yang dapat ditelusuri | Setiap klaim memiliki ID chunk, paper, dan halaman |
 | 4 | Evaluasi sitasi yang terukur | Laporan citation precision, citation recall, dan faithfulness pada 30-50 pertanyaan uji |

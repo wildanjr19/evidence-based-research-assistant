@@ -1,5 +1,6 @@
 import re
 import unicodedata
+from collections.abc import Callable
 from dataclasses import dataclass
 from itertools import groupby
 
@@ -30,24 +31,40 @@ class ChunkingResult:
     dropped_tokens: int
 
 
-def _windows(length: int, config: ChunkingConfig) -> tuple[list[tuple[int, int]], int]:
+def _windows(
+    length: int,
+    config: ChunkingConfig,
+    fits_model: Callable[[int, int], bool] | None = None,
+) -> tuple[list[tuple[int, int]], int]:
     windows: list[tuple[int, int]] = []
     start = 0
     while start < length:
         end = min(start + config.target_tokens, length)
-        if end - start < config.min_tokens:
-            if windows and config.short_chunk_policy == "merge":
+        while fits_model and end > start + 1 and not fits_model(start, end):
+            end -= 1
+        if end == length and end - start < config.min_tokens:
+            if (
+                windows
+                and config.short_chunk_policy == "merge"
+                and (fits_model is None or fits_model(windows[-1][0], end))
+            ):
                 windows[-1] = (windows[-1][0], end)
                 return windows, 0
-            return windows, length - (windows[-1][1] if windows else 0)
+            if fits_model is None or config.short_chunk_policy == "drop" or not windows:
+                return windows, length - (windows[-1][1] if windows else 0)
         windows.append((start, end))
         if end == length:
             break
-        start = end - config.overlap_tokens
+        start = end - min(config.overlap_tokens, end - start - 1)
     return windows, 0
 
 
-def chunk_document(document: ParsedPaper, config: ChunkingConfig) -> ChunkingResult:
+def chunk_document(
+    document: ParsedPaper,
+    config: ChunkingConfig,
+    *,
+    fits_model: Callable[[str], bool] | None = None,
+) -> ChunkingResult:
     if not 0 <= config.overlap_tokens < config.target_tokens:
         raise ValueError("overlap_tokens must be >= 0 and < target_tokens")
     if not 1 <= config.min_tokens <= config.target_tokens:
@@ -71,7 +88,11 @@ def chunk_document(document: ParsedPaper, config: ChunkingConfig) -> ChunkingRes
             )
             offset += len(block.text) + 1
         text = "\n".join(parts)
-        windows, lost = _windows(len(positions), config)
+
+        def fits(start: int, end: int, source=text, spans=positions) -> bool:
+            return fits_model(source[spans[start][0] : spans[end - 1][1]])
+
+        windows, lost = _windows(len(positions), config, fits if fits_model else None)
         dropped += lost
         for start, end in windows:
             page_start, page_end = positions[start][2], positions[end - 1][2]

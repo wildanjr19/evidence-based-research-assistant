@@ -1,0 +1,7 @@
+# Isolated Windows GPU experiment; keep the main CUDA environment unchanged.
+docling[easyocr]==2.151.1
+easyocr==1.7.2
+torch==2.15.0+cu132
+torchvision==0.29.1+cu132
+pymupdf==1.27.2.3
+pytest==9.0.2

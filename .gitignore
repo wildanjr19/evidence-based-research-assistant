@@ -3,6 +3,9 @@ data/
 *.pdf
 *.pdf.txt
 
+# Ekspor Mendeley pengguna memuat abstrak korpus.
+reference-skripsi.bib
+
 # Secret
 .env
 .env.*

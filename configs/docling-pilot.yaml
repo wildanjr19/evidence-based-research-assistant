@@ -1,0 +1,11 @@
+output_dir: data/skripsi/docling-pilot/runs
+models_dir: data/skripsi/docling-pilot/models
+samples_path: data/skripsi/docling-pilot/samples-v2.json
+layout_revision: 8f39ad3c0b4c58e9c2d2c84a38465abf757272d8
+table_revision: fc0f2d45e2218ea24bce5045f58a389aed16dc23
+device: cuda
+batch_size: 1
+threads: 4
+seed: 42
+raster_dpi: 200
+ocr_languages: [id, en]

@@ -1,408 +1,342 @@
 # Panduan penggunaan
 
-Setup, perintah, dan batas perilaku pipeline yang sudah tersedia (M0 sampai M5). Pengantar proyek ada di [README.md](README.md); hasil verifikasi dan handoff ada di [TASKS.md](TASKS.md).
+Perintah berlaku dari root repo. `<...>` adalah placeholder untuk berkas dari snapshot yang sesuai.
+Hasil, persetujuan, biaya, dan riwayat: [TASKS-SKRIPSI.md](TASKS-SKRIPSI.md) dan [TASKS.md](TASKS.md).
 
 ## Setup
 
-Gunakan Python 3.11+ dan jalankan semua perintah dari root repo. Konfigurasi pipeline ada di [configs/config.yaml](configs/config.yaml); path dalam YAML relatif terhadap direktori kerja.
-
-### Environment pengembangan saat ini
-
-PyTorch CUDA dipasang manual, sedangkan `uv.lock` masih memakai sumber PyPI awal. `uv sync` atau `uv run` yang menyinkronkan environment dapat mengganti build CUDA. Sampai sumber/lock CUDA dirapikan, gunakan Python `.venv` langsung:
+Gunakan Python `.venv` langsung agar Torch CUDA manual tetap terjaga; **jangan `uv sync`/`uv run` pada environment ini**.
+Config default embedding masih CPU. Pada Linux gunakan `.venv/bin/python`; Windows memerlukan bentuk module karena launcher pytest diblokir.
 
 ```powershell
 .venv/Scripts/python.exe -m pytest -q
-.venv/Scripts/python.exe -m pytest -q -m "not gpu"
 .venv/Scripts/python.exe -m ruff check .
 .venv/Scripts/python.exe -m ruff format --check .
 ```
 
-Perintah pipeline di bawah juga memakai Python `.venv` langsung. Jika `.venv` sudah aktif, gunakan `python -m ...`; pada Linux/macOS tanpa aktivasi, gunakan `.venv/bin/python`. Pemanggilan `python -m pytest` diperlukan pada mesin pengembangan Windows karena Application Control memblokir launcher `pytest.exe`.
+Untuk melewati test GPU, tambahkan `-m "not gpu"` pada pytest. Instalasi environment **baru saja**:
+`python -m pip install --user uv`, lalu `python -m uv sync --locked`; ini bukan prosedur untuk memperbaiki `.venv` CUDA saat ini.
 
-Config default memakai `embedding.device: cpu`. Operasi tensor GPU sudah diverifikasi, tetapi embedding BGE nyata masih baru diuji pada CPU. Permintaan `device: cuda` gagal dengan pesan jelas bila CUDA tidak tersedia. Uji embedding GPU harus memakai cache/direktori eksperimen baru agar membuktikan encoding nyata. Riwayat dan handoff CUDA ada di [TASKS.md](TASKS.md#m3--indexing).
-
-### Instalasi baru
-
-Bagian ini untuk environment baru. Bila `uv` belum terpasang, jalankan `python -m pip install --user uv`, lalu:
-
-```bash
-python -m uv sync --locked
-```
-
-`uv.lock` mengunci versi dependensi; `uv sync` membuat `.venv` dan memasang dependensi runtime serta dev yang sudah disetujui. Bentuk `python -m uv` bisa dipakai ketika executable `uv` belum ada di `PATH`. Jika `.venv` sudah aktif, `uv` yang dipasang di Python luar tidak otomatis tersedia di dalamnya; di Windows, `py -3.11 -m uv sync --locked` memanggil Python luar.
-
-Setup tidak mengunduh bobot model atau memanggil API LLM. Pemeriksaan test/lint menggunakan perintah pada bagian environment di atas.
-
-## Fondasi M0
-
-```python
-from rag.config import load_config
-from rag.ids import make_chunk_id, make_paper_id
-
-config = load_config("configs/config.yaml")
-paper_id = make_paper_id("arxiv", "2401.12345v1")
-chunk_id = make_chunk_id(paper_id, page=7, ordinal=3)
-# arxiv:2401.12345v1:p7:c03
-```
-
-Jalankan contoh melalui `.venv/Scripts/python.exe` agar package tersedia. Loader menolak kunci hilang/tidak dikenal, tipe salah, dan nilai di luar batas dengan `ConfigError`. Path di dalam YAML tetap relatif terhadap direktori kerja, bukan lokasi file config.
-
-Validator ID memeriksa sintaks, versi arXiv, dan batas halaman/ordinal. Generation M5 memeriksa keberadaan chunk di database serta keanggotaannya dalam konteks retrieval. Run ID memakai waktu UTC dan sufiks acak; laporan hasil disimpan sebagai run baru tanpa menimpa hasil lama.
-
-## Data dan lisensi
-
-Hanya paper open access. PDF, teks penuh, dan indeks tidak disimpan di repo; yang disimpan hanya ID/URL, metadata lisensi, dan skrip unduh.
-
-## Ingestion M1
-
-Atur bagian `ingestion` di `configs/config.yaml`, lalu jalankan tahap-tahap ini secara berurutan:
-
-```bash
-.venv/Scripts/python.exe -m rag.ingestion discover --config configs/config.yaml
-.venv/Scripts/python.exe -m rag.ingestion fetch --config configs/config.yaml
-```
-
-`discover` mencari metadata lewat Atom API dan memeriksa lisensi lewat OAI-PMH `arXivRaw`, lalu menyimpan kandidat yang diterima ke `data/raw/candidates.jsonl`. `max_papers` membatasi jumlah hasil pencarian yang diperiksa, termasuk kandidat yang ditolak; jumlah paper diterima bisa lebih kecil. Default 10 kandidat ditujukan untuk uji awal, bukan korpus final 100–500 paper.
-
-Default lisensi yang diterima: `CC-BY-4.0`, `CC-BY-3.0`, dan `CC0-1.0`. Lisensi hilang/tidak dikenal/di luar daftar ditolak dengan alasan di log. OAI-PMH hanya memberikan metadata versi terbaru, sehingga versi hasil pencarian wajib sama dengan versi terbaru pada riwayat OAI; sistem tidak menebak versi atau menerapkan lisensi terbaru pada versi lama. Referensi: [metadata OAI-PMH arXiv](https://info.arxiv.org/help/oa/index.html) dan [lisensi per versi](https://info.arxiv.org/help/license/index.html).
-
-Request berlangsung satu per satu dengan jeda minimal 3 detik, sesuai [ketentuan API arXiv](https://info.arxiv.org/help/api/tou.html). Respons metadata di-cache per hari UTC di `data/cache/arxiv/`. Jangan menjalankan beberapa proses ingestion bersamaan. Timeout, batas ukuran PDF, dan jeda request tersedia di config; tidak ada retry otomatis untuk respons HTTP gagal.
-
-`fetch` hanya mengunduh kandidat berlisensi yang diizinkan config, memeriksa header PDF serta ukuran maksimum, lalu menghitung SHA-256 dan menyimpan metadata ke tabel `paper` pada `data/index/corpus.db`. Hash tidak pernah diisi dengan placeholder. Nama file memakai `arxiv_<source_id>.pdf`, dengan `/` pada ID lama diganti `_` agar aman di Windows; ID kanonis di database tetap memakai format arsitektur.
-
-Pengulangan memakai PDF lokal dan mempertahankan baris SQLite serta `parse_status`. Bila hash berbeda untuk versi paper yang sama, proses gagal tanpa memperbarui metadata atau menimpa file lama. Pemeriksaan struktur PDF lengkap ditunda ke parsing M2; M1 baru memeriksa header `%PDF-`.
-
-## Parsing dan chunking M2
-
-Jalankan M1 dengan config yang sama lebih dulu, lalu:
-
-```bash
-.venv/Scripts/python.exe -m rag.parsing --config configs/config.yaml
-.venv/Scripts/python.exe -m rag.chunking --config configs/config.yaml
-```
-
-Kedua perintah mendukung `--paper-id arxiv:2401.12345v1` untuk satu paper. Perintah berjalan lokal, tanpa jaringan, model ML, GPU, atau API LLM.
-
-Parser memakai posisi baris dan informasi font dari [PyMuPDF](https://pymupdf.readthedocs.io/en/latest/recipes-text.html). Ia mengurutkan dua kolom sederhana, menormalkan Unicode/whitespace, membuang teks margin yang berulang lintas halaman, serta mendeteksi heading umum/bernomor. Nomor halaman PDF tetap 1-indexed. Teks dan section disimpan ke `data/parsed/<safe_paper_id>.json` bersama hash dokumen, hash PDF, versi PyMuPDF, versi normalisasi, dan config parsing. `paper.parse_status` menjadi `ok` atau `failed`; alasan kegagalan tersimpan di laporan per run pada `data/parsed/reports/`.
-
-Chunker menjaga batas section, rentang halaman, urutan global chunk per paper, dan overlap dari config. `chunking.tokenizer: lexical-v1` menghitung kata dan tanda baca dengan regex `\w+|[^\w\s]`. Angka `n_tokens` **bukan jumlah token model embedding/LLM**; M3 memeriksa batas tokenizer model sebelum encoding. Tidak ada bobot model yang diunduh untuk M2.
-
-`short_chunk_policy: merge` menggabungkan ekor pendek dengan chunk sebelumnya dalam section yang sama; hasil gabungan dapat melebihi `target_tokens`. Pilihan `drop` membuang token baru pada ekor pendek. Section yang seluruhnya lebih pendek dari `min_tokens` dibuang pada kedua kebijakan, karena tidak digabung melintasi section. Jumlah token unik yang dibuang dilaporkan. `quality_flag=low_quality` hanya menandai karakter pengganti Unicode atau kontrol yang rusak; belum menjadi ukuran kualitas parsing secara menyeluruh.
-
-Pengulangan memakai hasil parsing dengan manifest yang sama dan memverifikasi kesamaan seluruh baris chunk. Bila input/config parsing atau isi chunk berbeda, proses menolak menimpa hasil lama. Gunakan `parsed_dir` dan database terpisah untuk eksperimen; penghapusan/rebuild data lama memerlukan persetujuan. Nama file tetap aman di Windows, sedangkan format ID/sitasi dan skema SQLite tidak berubah. Config M0/M1 tetap bisa dimuat; field M2 yang belum ada memakai default dan dicatat dalam config efektif laporan.
-
-OCR belum tersedia. Tabel, rumus, layout lebih dari dua kolom, serta heading yang tidak biasa belum divalidasi pada korpus besar. Keberhasilan satu PDF tidak mengukur akurasi sitasi atau kualitas retrieval.
-
-## Indexing M3
-
-Setelah M2, jalankan dengan config korpus yang sama:
-
-```bash
-.venv/Scripts/python.exe -m rag.indexing --config configs/config.yaml
-```
-
-Dalam `.venv` aktif, cukup `python -m rag.indexing --config configs/config.yaml`. Tahap ini memproses seluruh tabel `chunk`, termasuk `low_quality`; penyaringan kualitas dilakukan saat retrieval M4. Jalankan satu proses indexing pada satu korpus, tanpa ingestion/chunking bersamaan.
-
-Embedder memakai [BAAI/bge-base-en-v1.5](https://huggingface.co/BAAI/bge-base-en-v1.5) berlisensi MIT melalui sentence-transformers. `embedding.revision` mengunci commit model, default `a5beb1e3e68b9ab74eb54cfd186867f64f240e1a`; `max_tokens: 512` membatasi input termasuk special tokens. Embedding dokumen tidak memakai prefix query, memakai float32, dan dinormalisasi. Bobot diunduh ke `paths.cache_dir/models/` pada penggunaan pertama. Tidak ada API LLM berbayar yang dipanggil.
-
-M3 menghitung token dengan tokenizer model sebelum encoding. Chunk yang melebihi batas ditolak dengan ID dan jumlah tokennya; teks tidak dipotong. Target 400 token leksikal M2 tidak menjamin muat dalam 512 token model. Bila terjadi penolakan, buat database chunk baru dengan target lebih kecil. Jangan mengganti teks atau menghapus chunk pada database lama.
-
-Vektor dan metadata ID/paper/halaman/section/kualitas disimpan dalam tabel `chunks` di `paths.index_dir/vectors.lance/`. Manifest mengunci identitas model dan dimensi. `chunk_fts` adalah virtual table FTS5 dalam database korpus, dengan tokenizer `unicode61 remove_diacritics 2`. Tokenizer ini sudah diuji terhadap pencarian huruf beraksen. SQLite `bm25()` menghasilkan skor lebih kecil untuk hasil lebih baik. Skema inti `paper`/`chunk` dan ID sitasi tetap sama.
-
-Cache embedding berada di `paths.cache_dir/embeddings/`, berdasarkan hash teks dan identitas model, revision, dimensi, batas token, normalisasi, serta prefix dokumen. Teks identik berbagi satu cache. Pengulangan memuat cache dan hanya menambah baris indeks yang belum ada. Cache rusak, metadata indeks berbeda, atau manifest model berubah ditolak tanpa penggantian otomatis. Run parsial dapat dilanjutkan dengan input yang sama; penulisan LanceDB dan FTS5 tidak berada dalam satu transaksi bersama.
-
-Laporan baru di `paths.index_dir/reports/` mencatat config efektif dan hash, seed, versi library, identitas model, jumlah chunk/vektor/FTS, waktu, token model, embedding baru, dan cache hit. Token model mencakup seluruh chunk; `computed_tokens` hanya menghitung teks unik yang baru di-encode. Waktu mencakup pemuatan model dan unduhan bila diperlukan. Kegagalan juga dilaporkan. Run lama tidak ditimpa.
-
-## Retrieval M4
-
-Setelah indexing M3 selesai, gunakan config korpus yang sama:
+Config YAML bertipe/tervalidasi; path relatif terhadap direktori kerja. Contoh aktif: `configs/skripsi-pilot.yaml`.
+Model/revision, ukuran chunk, device, top-k, dan batas panggilan berasal dari config; jangan mencampur snapshot/ruang embedding.
+Jika model sudah tersedia dan seluruh proses harus offline:
 
 ```powershell
-.venv/Scripts/python.exe -m rag.retrieval --config configs/config.yaml --question "How is RAG retrieval evaluated?" --mode hybrid
+$env:HF_HUB_OFFLINE = '1'
+$env:TRANSFORMERS_OFFLINE = '1'
+$env:TOKENIZERS_PARALLELISM = 'false'
 ```
 
-Pilihan `--mode`: `bm25`, `dense`, `hybrid`, dan `hybrid+rerank`. Tanpa `--mode`, `retrieval.use_reranker` menentukan hybrid dengan atau tanpa reranker. Hasil berisi chunk asli, ID, paper, halaman, section, rank, skor, dan jenis skor; jumlah akhir dibatasi `retrieval.final_top_k`. BM25 mengurutkan skor dari kecil ke besar; cosine, RRF, dan logit reranker dari besar ke kecil. Skor antar mode tidak dapat dibandingkan langsung.
+### Key dan izin API
 
-Retrieval hanya membaca database dan indeks. Snapshot chunk diperiksa terhadap indeks yang dipakai; indeks parsial, manifest model berbeda, atau metadata/teks yang berubah ditolak. Jangan menjalankan indexing atau perubahan korpus bersamaan dengan retrieval. Chunk `low_quality` disaring sebelum pemilihan kandidat/fusion. Bila semua chunk berkualitas rendah, hasil kosong tanpa memuat model. Mode BM25 tidak memuat model embedding atau reranker.
+Salin `.env.example` ke `.env` jika belum ada; isi hanya provider yang digunakan. Jangan menimpa `.env` yang sudah terisi.
+Environment diprioritaskan. Loader menerima assignment satu baris UTF-8, kutip, komentar `#`, dan prefix `export` opsional;
+multiline, escape, dan interpolasi tidak didukung. Key tidak boleh masuk YAML, command, log, atau Git.
 
-Dense memakai cosine exact search dengan urutan ID sebagai pemecah skor seri. Prefix query BGE berasal dari `retrieval.query_prefix`, mengikuti [model card BGE](https://huggingface.co/BAAI/bge-base-en-v1.5); isi `''` untuk menonaktifkannya dalam eksperimen. Prefix tidak diterapkan ke dokumen. Panjang query, prefix, dan special tokens diperiksa sebelum encoding; input terlalu panjang ditolak. Cache query memakai mekanisme embedding M3 di `paths.cache_dir/embeddings/`.
+| Kebutuhan | Variabel |
+|---|---|
+| DeepSeek / OpenAI generator | `DEEPSEEK_API_KEY` / `OPENAI_API_KEY` |
+| GPT judge Surplus | `SURPLUS_API_KEY`, `SURPLUS_API_URL`, `GPT_MODEL_ID` |
+| JEV Surplus | `SURPLUS_API_KEY`, `SURPLUS_API_URL`, `JEV_MODEL_ID=jev-1.14` |
 
-Hybrid menggabungkan dua daftar melalui RRF dengan rank mulai 1 dan `retrieval.rrf_k`, lalu membatasi hasil ke `retrieval.rerank_candidates`. Mode `hybrid+rerank` memberi skor ulang kandidat ini memakai [BAAI/bge-reranker-base](https://huggingface.co/BAAI/bge-reranker-base), revision terkunci di config. Reranker memakai device embedding, batch `retrieval.reranker_batch_size`, dan maksimum `retrieval.reranker_max_tokens` untuk pasangan query/dokumen. Query dipertahankan utuh; bagian dokumen yang dilihat reranker dapat dipotong (`only_second`). Teks chunk dan ID sitasinya tetap utuh. Query yang tidak menyisakan ruang dokumen ditolak.
+Endpoint Surplus dibatasi HTTPS `https://api.surplusintelligence.ai/v1`; JEV juga menerima `/v1/decisions`.
+Membuat `.env` tidak mengaktifkan API. CLI generation/judge default cache-only; `--allow-api` memerlukan izin dengan batas konkret.
+Batch M6/S5 sudah selesai dan bukan izin baru. Setelah crash, periksa receipt/marker/cache lalu replay tanpa API.
 
-Bobot reranker diunduh ke `paths.cache_dir/models/` pada penggunaan pertama yang memerlukan inference. Skor logit pasangan query/teks di-cache di `paths.cache_dir/reranking/`, dengan identitas model/revision, batas token, kebijakan pemotongan, dan hash query/teks. Cache rusak ditolak; perubahan identitas memakai cache baru. Tidak ada panggilan API LLM.
-
-## Evaluasi retrieval M4
-
-Siapkan JSONL validasi dengan format pertanyaan di [ARCHITECTURE.md](ARCHITECTURE.md#4-skema-data-sqlite). `gold_paper_ids` dan `gold_chunk_ids` harus ada di korpus yang dipakai. Dataset `eval/questions.jsonl` sudah ditinjau pengguna dan cocok dengan korpus M6 empat paper/236 chunk pada `data/m6-multipaper/20261119T004114Z/`; fixture di `tests/fixtures/retrieval_questions.jsonl` hanya cocok dengan korpus sintetis pada test.
-
-Contoh berikut memakai file validasi yang disiapkan sendiri di `data/validation/questions.jsonl`:
+## Impor referensi skripsi (S1)
 
 ```powershell
-.venv/Scripts/python.exe -m rag.evaluation --config configs/config.yaml --dataset data/validation/questions.jsonl --mode all
+.venv/Scripts/python.exe -m rag.ingestion import-bib --bib reference-skripsi.bib --output-dir data/skripsi/references
 ```
 
-`--mode all` menjalankan keempat konfigurasi, masing-masing dengan run baru. Pilihan satu mode sama dengan CLI retrieval. Tanpa `--dataset`, path mengikuti `evaluation.dataset_path`. Runner tidak membuat atau memperbaiki gold set; ID tidak valid/hilang, qid duplikat, atau pasangan paper/chunk yang tidak sesuai ditolak sebelum inference.
+Impor offline membuat run baru: `entries.jsonl`, `references.jsonl`, `report.json`. Duplikat/konflik tetap tercatat;
+metadata BibTeX belum merupakan bukti full text. Impor tidak menulis paper/chunk. `bibtexparser==2.1.0` sudah disetujui/dikunci.
 
-Evaluasi mengambil ranking sampai `max(evaluation.ks)`, bukan `final_top_k` untuk prompt. Default menghasilkan Recall@5/10/20 dan MRR dengan kedalaman 20; kapasitas kandidat tetap mengikuti config retrieval. Recall/MRR dihitung per pertanyaan lalu dirata-ratakan untuk pertanyaan dengan gold chunk. Pertanyaan `unanswerable` disimpan dengan metrik `null` dan tidak masuk penyebut; penolakan jawaban dan faithfulness baru dievaluasi pada tahap berikutnya.
+## PDF dan penyiapan korpus (S2-S3)
 
-Setiap run membuat direktori baru di `evaluation.output_dir/<run_id>/` berisi `metrics.json`, `per_question.jsonl`, dan `report.md`. Karakter `:` pada nama direktori diganti `-` agar aman di Windows; ID run di laporan tetap kanonis. Laporan mencatat config/hash, seed, versi model/library/SQLite, backend aktual (termasuk mock), versi tabel vektor, hash dataset/korpus, ranking/skor per pertanyaan, statistik cache, dan waktu. Run gagal juga dicatat; tabrakan nama run ditolak tanpa menimpa hasil lama.
-
-Smoke test lokal M4 memakai satu paper dan lima pertanyaan, termasuk reranker nyata di CPU dan pengulangan offline dengan ranking identik dari cache. Hasil, waktu, dan memori proses ada di TASKS.md. Reranking mempertahankan Recall@5 tetapi menurunkan MRR pada sampel ini; jangan menganggap reranker selalu meningkatkan kualitas. Evaluasi korpus penuh dan ketepatan sitasi menunggu M6.
-
-## Generation dan sitasi M5
-
-Modul `rag.generation` menjalankan retrieval lalu menghasilkan JSON klaim/sitasi, menyimpan hasil, dan merender referensi dari metadata serta kutipan chunk asli. Mode retrieval mengikuti pilihan M4. Contoh tanpa mengizinkan panggilan API baru:
+Input pengguna di `data/reference-skripsi/`: 41 PDF + 3 TXT, bukan 44 PDF; 746 halaman PDF pada audit awal.
+Manifest/hash sudah dicocokkan. Jalur default memverifikasi identitas/lisensi sebelum admission;
+koleksi lokal penuh memakai opt-in dan label sebagaimana dijelaskan di bawah.
+TXT belum memiliki pemetaan halaman PDF yang sah, sehingga belum menjadi bukti searchable.
+Admission lokal default maksimal tiga PDF dengan manifest yang sudah diperiksa:
 
 ```powershell
-.venv/Scripts/python.exe -m rag.generation --config configs/config.yaml --question "How is RAG retrieval evaluated?" --mode hybrid
+.venv/Scripts/python.exe -m rag.ingestion prepare-local --config <config-baru.yaml> --manifest <manifest-tertinjau.json>
 ```
 
-Secara default, generation hanya memakai cache respons yang sudah ada. Cache miss menghasilkan status gagal dan pesan `--allow-api`, tanpa memanggil provider. Context kosong menghasilkan "tidak ada bukti" tanpa memuat klien LLM. Untuk panggilan berbayar, pilih model API yang tersedia, siapkan key provider, lalu tambahkan `--allow-api` secara eksplisit. Key berasal dari `DEEPSEEK_API_KEY` atau `OPENAI_API_KEY` di environment; bila variabel belum ada, adapter membaca key provider dari `.env` di direktori kerja. Jalankan dari root repo. Jangan memasukkan key ke config atau argumen CLI.
+Batch lokal yang disetujui memakai `--max-documents <batas>` eksplisit, tidak boleh
+melebihi `ingestion.max_papers`. Manifest memuat hanya dokumen yang lolos; kandidat
+tertahan tetap tercatat di laporan kesiapan. Snapshot verifikasi lisensi tahap 2 berisi 18 PDF/974 chunk;
+config baca KB ada di `data/skripsi/kb-expansion/2026-11-20T01-33-36Z_3f61ac/kb/pipeline-config.yaml`.
+Ini korpus kandidat terpisah, belum mengganti config/UI aktif.
 
-Salin `.env.example` ke `.env` bila belum ada, lalu isi `DEEPSEEK_API_KEY=...` untuk DeepSeek. Loader hanya mengambil key provider terpilih, tanpa mengubah environment proses. Format yang didukung: satu assignment per baris, kutip tunggal/ganda opsional, prefix `export` opsional, serta komentar `#` (bungkus nilai dengan kutip jika mengandung `#`). File memakai UTF-8; BOM diterima. Multiline, escape sequence, dan interpolasi variabel tidak didukung. Environment yang sudah ada tetap diprioritaskan, termasuk nilai kosong yang akan ditolak. Membuat `.env` tidak mengaktifkan panggilan API.
+Manifest mengikat hash bibliografi/PDF/HTML artikel penerbit, citation key, DOI, halaman,
+lisensi/URL, dan waktu observasi lokal. Identitas dapat berasal dari HTML artikel,
+DOI tercetak pada halaman identitas PDF, atau laporan snapshot lama dengan hash/ref sama.
+Bukti lisensi harus mengikat artikel: `rel=license`, halaman copyright, pernyataan
+lisensi artikel pada satu/dua halaman PDF berurutan, atau receipt snapshot yang sama.
+Lisensi dataset tidak diterima sebagai lisensi artikel. DOI baru dari artikel
+penerbit boleh melengkapi DOI bibliografi yang kosong; DOI lama tidak ditimpa.
+Database harus baru; sumber lokal tidak diubah. `fetched_at` pada jalur ini berarti
+waktu observasi lokal, bukan receipt unduhan. Contoh manifest dan bukti pilot:
+`data/skripsi/local-pilot/2026-11-20T00-35-31Z_6fb4ad/admission-manifest.json`.
+Jangan mengunduh PDF tambahan atau menganggap semua file layak diindeks. Contoh
+manifest KB/status seluruh input ada di `data/skripsi/kb-build/2026-11-20T01-06-05Z_f81029/`.
+Konversi tetap serial, maksimal tiga PDF per pemanggilan; raw terverifikasi dapat
+dirangkai ke satu build KB dengan provenance tiap run. Bukan tuning retrieval/generation.
 
-Provider yang diimplementasikan: `deepseek` dan `openai`, memakai SDK OpenAI yang sudah terpasang dengan endpoint masing-masing. `generation.base_url: ''` memilih endpoint standar; override menerima HTTPS tanpa credential/query/fragment. Klien memakai JSON object mode, `generation.max_output_tokens`, `timeout_seconds`, dan `max_calls_per_run`. Retry transport SDK dinonaktifkan agar tidak melewati batas panggilan. Panduan protokol: [DeepSeek JSON Output](https://api-docs.deepseek.com/guides/json_mode/) dan [OpenAI Chat Completions](https://developers.openai.com/api/reference/python/resources/chat/subresources/completions/methods/create).
+### Seluruh koleksi PDF lokal
 
-Model default yang dipilih pengguna adalah `deepseek-flash`, dengan `generation.thinking: false`. Adapter mengirim `thinking.type: disabled` secara eksplisit untuk DeepSeek; `true` mengaktifkannya. Parameter ini tidak dikirim ke OpenAI. Thinking aktif secara default pada API DeepSeek dan mengabaikan temperature; pengaturannya mengikuti [dokumentasi Thinking Mode](https://api-docs.deepseek.com/guides/thinking_mode/). Cache respons membedakan mode thinking agar hasil eksperimen tidak tercampur. Config lama yang tidak menyebutkan field ini memakai `false`.
-
-Uji API nyata satu pertanyaan sudah berhasil, termasuk pengulangan tanpa request baru dari cache lokal. Ini memvalidasi koneksi dan format, bukan benchmark kualitas atau perbandingan antar model. Token, estimasi biaya, latensi, RAM/VRAM, serta lokasi artefak tercatat di TASKS.md bagian uji API DeepSeek sebelum M6.
-
-Prompt hanya berisi pertanyaan, instruksi format/grounding, dan chunk hasil retrieval yang cocok dengan SQLite. ID, teks, paper, halaman, section, kualitas, dan status parsing diperiksa sebelum pengiriman. Judul untuk referensi berasal dari database. Chunk lain di korpus tidak dimasukkan. Instruksi dalam question/chunk diperlakukan sebagai data tak tepercaya.
-
-Respons harus mengikuti format klaim/sitasi di ARCHITECTURE.md. JSON nonvalid, field tambahan/duplikat, struktur klaim salah, atau output terpotong memperoleh satu retry format, tetap tunduk pada batas panggilan. Retry memakai konteks yang sama dan tidak memasukkan klaim dari respons gagal sebagai bukti. Setelah dua kegagalan, hasil dicatat sebagai gagal tanpa klaim parsial.
-
-ID yang sintaksnya salah, hilang dari database, atau berada di luar konteks dibuang dan dicatat alasannya. Sitasi ganda dideduplikasi dengan urutan tetap. Klaim tanpa sitasi valid tetap disimpan dan diberi label "tidak ada bukti"; klaim yang sudah ditandai unsupported oleh LLM juga mempertahankan label tersebut. Sitasi valid secara ID belum berarti chunk mendukung makna klaim: rendering menyatakan "belum diverifikasi" sampai M6.
-
-Cache di `paths.cache_dir/llm/` mencakup provider/endpoint, model, temperature, batas output, backend, dan seluruh prompt. Backend mock memakai namespace berbeda dari provider nyata. Cache menyimpan respons, model yang dilaporkan provider, token input/output, finish reason, provenance, dan checksum. Cache rusak ditolak tanpa panggilan pengganti otomatis. Cache hit tidak memakai jatah panggilan dan mencatat nol token baru; usage asli tetap tersedia pada attempt. Usage hilang/tidak valid membuat run gagal dan ditandai unknown, bukan dianggap gratis.
-
-M5 membuat tabel `run`, `answer`, dan `claim` sesuai skema yang sudah ditetapkan di ARCHITECTURE.md. Hanya tabel hasil ini yang ditulis; paper, chunk, FTS, dan vektor dipertahankan. Tabel lama yang nama kolomnya tidak cocok ditolak tanpa penggantian. Gunakan salinan database/index untuk smoke test atau eksperimen yang perlu memisahkan riwayat.
-
-Laporan baru di `paths.index_dir/reports/generation-<run_id>.json` memuat config/hash, seed, code version, konteks ID/hash, backend, respons setiap attempt, usage/token baru, cache hit, format failure, sitasi yang ditolak, klaim, referensi, dan status verifikasi. `answer.raw_response` menyimpan respons terakhir; respons sebelumnya tetap ada di laporan/cache. Run gagal juga disimpan, termasuk raw response yang gagal format. Output gagal memakai exit code 1. Tidak ada penggantian run/report lama.
-
-Test dan smoke test M5 memakai LLM mock, tanpa API berbayar. Pengukuran RAM/VRAM proses dengan embedding/reranker CPU nyata serta keterbatasannya dicatat di TASKS.md. Verifikasi semantik dan metrik sitasi baru dikerjakan pada M6.
-
-## Verifikasi dan evaluasi M6
-
-Gunakan Python `.venv` langsung untuk mempertahankan PyTorch CUDA yang dipasang
-manual. Dataset 30 pertanyaan lintas empat paper sudah ditinjau dan disetujui
-pengguna; 52 label manusia dari eksperimen satu paper dilaporkan terpisah.
-Benchmark generation/sitasi dan judge nyata sudah selesai untuk korpus kecil ini. Panduan dataset ada di
-[eval/README.md](eval/README.md).
-
-Runner retrieval lama tetap menjadi default. Untuk retrieval, generation,
-verifikasi semantik, dan metrik sitasi dalam satu run:
+Snapshot terbaru: **41 PDF/746 halaman terdaftar, 40 searchable, 2.514 chunk**.
+Config: `data/skripsi/kb-local-all/2026-11-20T01-59-17Z_c95c3b/kb/pipeline-config.yaml`.
+Receipt citation key untuk UI: `data/skripsi/kb-local-all/2026-11-20T01-59-17Z_c95c3b/admission-receipt.json`.
 
 ```powershell
-.venv/Scripts/python.exe -m rag.evaluation --stage citations --config data/m6-smoke/local-verifier-v1/config.yaml --mode hybrid+rerank
+.venv/Scripts/python.exe -m streamlit run src/rag/ui/app.py --server.address 127.0.0.1 -- --config data/skripsi/kb-local-all/2026-11-20T01-59-17Z_c95c3b/kb/pipeline-config.yaml --bibliography-report data/skripsi/kb-local-all/2026-11-20T01-59-17Z_c95c3b/admission-receipt.json
 ```
 
-Contoh ini memakai pertanyaan yang respons DeepSeek-nya sudah tersedia di cache.
-Tanpa `--allow-api`, cache miss menjadi generation gagal, bukan panggilan API atau
-penolakan jawaban yang benar. `--with-judge` mengaktifkan sampel judge; flag tersebut
-tetap tidak mengizinkan request baru tanpa `--allow-api`. Jangan menjalankan batch
-berbayar sebelum dataset ditinjau dan batas request/biaya disetujui.
+Parasuraman sudah diekstrak OCR tetapi belum memiliki chunk yang lolos kualitas;
+UI menampilkan status ini. Katalog/label telah diuji AppTest tanpa generation.
+Config/UI default lama tidak ditimpa. Laporan rinci pada `summary.md` snapshot.
 
-`generation.max_calls_per_run` membatasi seluruh batch generation termasuk retry
-format dan semua mode yang dipilih. `verification.judge_max_calls_per_run`
-membatasi seluruh batch judge secara terpisah. Cache hit tidak memakai jatah
-panggilan/token baru. CLI mengembalikan exit code 1 untuk run incomplete/gagal.
-`--mode all` membuat laporan tiap mode dan berbagi kedua batas batch tersebut.
+Pengguna menyetujui pemrosesan seluruh 41 PDF lokal, tanpa menunggu DOI/lisensi.
+Gunakan database/config baru serta manifest berpolicy `user_local_collection`:
 
-MiniCheck memakai model Hugging Face yang sudah diverifikasi:
-`lytang/MiniCheck-Flan-T5-Large`, revision
-`96eafd01cee2d16cf81aaa2fb226b14f422a37b3`, metadata lisensi MIT.
-Adapter mengikuti [inference upstream](https://github.com/Liyan06/MiniCheck/blob/main/minicheck/inference.py)
-untuk format pasangan `predict: <evidence></s><claim>` dan probabilitas dua token
-label. Adapter ini memeriksa pasangan klaim/chunk utuh, tanpa segmentasi kalimat
-atau pemotongan. Input di atas `min(verification.max_tokens, model.n_positions)`
-ditandai belum terverifikasi. Batas default 512, batch 4, device CPU, threshold 0,5.
-Ini bukan benchmark pipeline segmentasi dokumen upstream. Penggunaan pertama
-mengunduh bobot sekitar 3,13 GB; tidak menambah dependensi atau mengubah lockfile.
-
-Cache verifier di `paths.cache_dir/verification/` memuat hash klaim/evidence,
-model/revision, adapter, device, panjang input, threshold, backend, dan checksum.
-Cache rusak ditolak tanpa dihapus. Hasil yang berhasil disimpan append-only di
-tabel `verification` sesuai skema arsitektur. Kegagalan verifier tercatat pada
-laporan dengan label `null`; jawaban dan klaim tetap tersimpan.
-
-Judge memakai keluarga berbeda: DeepSeek versus OpenAI, termasuk GPT melalui
-Surplus dengan provider `surplus-chat`. Endpoint kustom lain atau identitas
-keluarga yang tidak dikenali ditolak. Sampel
-dipilih pada klaim yang memiliki sitasi dengan seed dan kunci stabil qid/ordinal;
-semua pasangan tersitasi pada klaim terpilih dinilai. JSON judge wajib berisi
-label dan alasan. Hasil judge, model yang dilaporkan server, token/cache, dan
-agreement dilaporkan terpisah dari metrik MiniCheck. Judge GPT-4o-mini nyata melalui Surplus dan replay cache sudah diuji pada M6.
-
-Laporan baru berada di `evaluation.output_dir/<run_id>/`, default `eval/results/`,
-berisi metrics, per-question, dan report. Run evaluasi serta run generation
-pertanyaan ditulis ke SQLite; laporan menghubungkan ID run masing-masing.
-Hash dataset/korpus/config, code version, versi model/library/backend, seed,
-jumlah dan tipe pertanyaan, waktu, token, dan memori proses dicatat. Teks sumber
-lengkap tetap di laporan generation/berkas anotasi dalam `data/`; laporan publik
-evaluasi tidak menyalin kutipan atau Markdown yang berisi chunk.
-
-Precision/recall sitasi dan faithfulness memakai label MiniCheck. Sitasi yang
-dibuang saat validasi, termasuk ID di luar konteks, masuk hallucinated citation
-rate; unitnya ID unik per klaim setelah deduplikasi M5. Klaim tanpa sitasi tetap
-masuk penyebut recall/faithfulness. Klaim berflag unsupported tidak dihitung
-sebagai klaim supported. Setiap klaim pada unanswerable dihitung gagal; penolakan
-yang benar memakai nol klaim (`{"claims": []}`). Generation gagal tidak dianggap
-abstention. Metrik dukungan agregat menjadi `null` bila ada generation gagal atau
-pasangan belum terverifikasi; jumlah kegagalan dan cakupan tetap ditampilkan.
-Penyebut nol dan kappa tanpa label manusia juga menghasilkan `null`.
-
-Untuk menghitung agreement pada 50–100 pasangan berlabel manusia tanpa memanggil
-generation/API, gunakan `--stage agreement --annotations <file.jsonl>` sesuai
-panduan anotasi. Label diimpor secara baca-saja; runner tidak mengisi label kosong
-atau memperbaiki gold set secara otomatis.
-
-## GPT judge melalui Surplus
-
-Isi `SURPLUS_API_KEY`, `SURPLUS_API_URL=https://api.surplusintelligence.ai/v1`,
-dan `GPT_MODEL_ID=gpt-4o-mini` di environment atau `.env`. Key OpenAI langsung
-tidak diperlukan. Pada salinan config lengkap, gunakan:
-
-```yaml
-verification:
-  judge_provider: surplus-chat
-  judge_model: gpt-4o-mini
-  judge_base_url: https://api.surplusintelligence.ai/v1
-  judge_max_calls_per_run: 50
+```powershell
+.venv/Scripts/python.exe -m rag.ingestion prepare-local --config <config-baru.yaml> --manifest <manifest-lokal.json> --max-documents 41 --local-collection
 ```
 
-Field lain tetap mengikuti config lengkap. `GPT_MODEL_ID` menentukan model
-efektif saat judge dibuat; environment diprioritaskan. Nilai efektif masuk
-config/hash laporan. Gunakan `--stage citations --with-judge`; tanpa
-`--allow-api` cache miss tetap tidak memanggil jaringan. Sebelum memakai flag
-tersebut untuk batch besar, tetapkan dan setujui batas generation/judge.
+Flag ini tidak menonaktifkan hash/path/page/encryption checks. Dokumen tanpa bukti
+penerbit diberi status `LicenseRef-UserProvided-Unverified` dan ID lokal berhash;
+18 identitas terverifikasi lama dipertahankan. Tidak ada klaim bahwa seluruh PDF OA.
+Mode default tanpa flag tetap memerlukan bukti penerbit/lisensi. Tiga TXT belum
+memiliki halaman PDF dan tidak diperlakukan sebagai PDF.
+Build tetap memakai gate kualitas; PDF tanpa chunk lolos tampil dalam katalog
+sebagai belum searchable. UI menerima receipt `prepare-local` pada
+`--bibliography-report`, menampilkan citation key dan label sumber/lisensi.
 
-Jalur ini memakai JSON label dan alasan, berbeda dari Jev. Model respons harus
-sesuai model yang diminta atau snapshot-nya. SDK memakai key Surplus, JSON mode,
-batas output, timeout, dan nol retry. Kontrak endpoint mengikuti
-[Chat Completions Surplus](https://preview.surplusintelligence.ai/docs/api-reference/chat-completions).
-Transport/runner diuji dengan mock dan inference nyata pada M6. Run berbayar memakai 30 request DeepSeek dan 28 judge; replay tanpa `--allow-api` memakai nol request baru. Lihat [laporan M6](eval/results/2026-11-19T01-25-11Z_7492c6/m6-summary.md).
+Downloader lama dapat direplay tanpa jaringan:
+
+```powershell
+.venv/Scripts/python.exe -m rag.ingestion download-bib --download-config configs/skripsi-download.yaml
+```
+
+Ledger lama memakai 26/30 request dan lima slot PDF. Jangan mereset ledger atau memakai `--allow-network` tanpa izin baru.
+Jalur arXiv lama `rag.ingestion discover` lalu `fetch --config <config>` melakukan request jaringan; tidak diperlukan untuk folder pengguna.
+
+Daftarkan **laporan unduhan siap** ke korpus terpisah:
+
+```powershell
+.venv/Scripts/python.exe -m rag.ingestion prepare-bib --config configs/skripsi-pilot.yaml --download-report data/skripsi/downloads/2026-11-19T06-53-52Z_57a5ae/report.json
+```
+
+Hash/identitas/lisensi diperiksa. `crossref:<DOI>_sha256_<hash-PDF>` mengikat snapshot;
+lookup citation key ada pada laporan prepare di `index/reports/`. Label lama tidak disalin.
+
+### Parsing PyMuPDF dan indexing
+
+Pada korpus terdaftar, jalankan serial dengan config yang sama:
+
+```powershell
+.venv/Scripts/python.exe -m rag.parsing --config configs/skripsi-pilot.yaml
+.venv/Scripts/python.exe -m rag.chunking --config configs/skripsi-pilot.yaml
+.venv/Scripts/python.exe -m rag.indexing --config configs/skripsi-pilot.yaml
+```
+
+Parse/chunk mendukung `--paper-id`. Parser aktif memakai PyMuPDF tanpa OCR; section/urutan baca heuristik dan tabel dapat rata.
+`n_tokens` chunk adalah token leksikal. Embedding memeriksa tokenizer model termasuk special tokens tanpa truncation.
+`short_chunk_policy=drop` membuang ekor/section pendek dan melaporkannya; `merge` dapat melewati target leksikal.
+Input/config/chunk berbeda ditolak tanpa penghapusan otomatis: gunakan raw/parsed/database/index baru untuk eksperimen.
+
+Chunk narasi Docling kini memeriksa batas tokenizer saat memilih jendela leksikal;
+halaman/teks asli tetap dijaga, tanpa truncation. Unit leksikal tunggal yang masih
+terlalu panjang tetap ditahan. Anggaran tabel dan jalur PyMuPDF lama tetap.
+Config pilot native tiga PDF dibekukan di
+`data/skripsi/pilot-refinement/2026-11-20T00-54-04Z_721c6f/frozen-config.yaml`:
+default hybrid tanpa reranker pada snapshot tersebut. Ini bukan config batch penuh
+atau pergantian config/UI aktif. Perbandingan empat mode tetap dicatat di TASKS-SKRIPSI.md.
+
+### Adapter Docling: snapshot terpisah
+
+Docling 2.151.1 memakai environment/model lokal terkunci: Heron, TableFormer accurate, EasyOCR id/en, CUDA batch satu.
+Parser/UI aktif belum diganti. Maksimal tiga PDF pilot terdaftar/berlisensi; seluruh halaman asli diproses, OCR selektif.
+
+```powershell
+data/skripsi/docling-pilot/.venv/Scripts/python.exe -m rag.parsing.docling_pipeline extract --source-config configs/skripsi-pilot.yaml --docling-config configs/docling-pilot.yaml --samples data/skripsi/docling-pilot/samples-v2.json
+.venv/Scripts/python.exe -m rag.parsing.docling_pipeline build --run <run>
+.venv/Scripts/python.exe -m rag.indexing --config <run>/pipeline-config.yaml
+```
+
+`extract` mencetak run baru di `data/skripsi/docling-full/`; `build` memakai Python utama. Keduanya memaksa offline.
+Jangan memakai chunker PyMuPDF pada artefak Docling. Raw PDF/cache boleh dibaca bersama; SQL/index/label tetap terpisah.
+JSON/Markdown/HTML/native comparison, gate blok, model/config/hash, dan laporan build menyimpan hasil yang ditahan.
+
+Header bertingkat, rowspan label eksplisit, row-section penuh, dan pipe/multiline didukung bila teks/geometri cocok.
+Caption/header/catatan/halaman serta konteks kelompok dipertahankan. Span ambigu, body berlubang, mismatch native,
+OCR tanpa pembanding, atau satu baris beserta konteks terlalu panjang ditahan sebelum SQL/index; tidak ada truncation.
+Policy `native_word_coverage=0.8` dan `header_center_tolerance=0.25` masih heuristik, bukan akurasi manusia.
+`do_cell_matching` pada config backend adalah boolean, default true; uji false belum mendukung penggantian.
+
+Eksperimen halaman lama: `rag.evaluation.docling --config configs/docling-pilot.yaml --offline` pada environment Docling.
+Ia tidak membangun korpus. Sampel scan buatan bukan scan asli atau bukti dukungan penuh bahasa Indonesia.
+
+### Environment khusus: hanya untuk instalasi baru
+
+Jangan membuat ulang environment yang sudah tersedia. Lock berikut tidak dipasang ke `.venv` utama:
+
+```powershell
+py -3.11 -m uv venv --python 3.11 data/skripsi/docling-pilot/.venv
+py -3.11 -m uv pip install --python data/skripsi/docling-pilot/.venv/Scripts/python.exe --require-hashes --index-strategy unsafe-best-match -r eval/docling-requirements.lock
+py -3.11 -m uv pip install --python data/skripsi/docling-pilot/.venv/Scripts/python.exe --no-deps --editable .
+py -3.11 -m uv venv --python 3.11 data/skripsi/s5-ragas/.venv
+py -3.11 -m uv pip install --python data/skripsi/s5-ragas/.venv/Scripts/python.exe --require-hashes -r eval/ragas-requirements.lock
+py -3.11 -m uv pip install --python data/skripsi/s5-ragas/.venv/Scripts/python.exe --no-deps --editable .
+```
+
+Test isolated:
+
+```powershell
+data/skripsi/docling-pilot/.venv/Scripts/python.exe -m pytest -q tests/test_docling.py tests/test_docling_adapter.py
+data/skripsi/s5-ragas/.venv/Scripts/python.exe -m pytest -q tests/test_ragas.py tests/test_ragas_adapter.py
+```
+
+## Retrieval dan generation
+
+```powershell
+.venv/Scripts/python.exe -m rag.retrieval --config configs/skripsi-pilot.yaml --question "Apa tugas dalam IndoNLU?" --mode hybrid
+.venv/Scripts/python.exe -m rag.generation --config configs/skripsi-pilot.yaml --question "Apa tugas dalam IndoNLU?" --mode hybrid
+```
+
+Mode: `bm25`, `dense`, `hybrid`, `hybrid+rerank`. Retrieval hanya membaca sumber/index; generation menyimpan run/answer/claim.
+Default generator `deepseek-flash`, `thinking: false`; cache miss tanpa izin API adalah kegagalan, bukan abstention.
+`generation.max_calls_per_run` mencakup retry format; retry transport SDK nol. Batas output/timeout mengikuti config.
+MiniCheck adalah verifier lokal; validitas ID tidak membuktikan dukungan makna. Jev belum menjadi verifier utama.
+
+## Tanya korpus skripsi di Streamlit (S4)
+
+```powershell
+.venv/Scripts/python.exe -m streamlit run src/rag/ui/app.py --server.address 127.0.0.1 -- --config configs/skripsi-pilot.yaml --bibliography-report data/skripsi/pilot-v1/index/reports/prepare-2026-11-19T07-11-50Z_3aa5f1.json
+```
+
+Laporan bibliografi harus cocok dengan seluruh snapshot: UI memeriksa hash/provenance/alias.
+Jangan memasangkan laporan S3 dengan subset Docling atau demo M6 dengan korpus skripsi.
+UI membedakan referensi terdaftar dari paper searchable; sitasi membuka judul, halaman PDF, kutipan, dan lisensi asli.
+Setiap submit memakai backup SQLite baru di cache; jawaban dan izin API direset bila identitas korpus berubah.
+Checkbox API hanya berlaku pada submit tersebut, maksimal dua percobaan termasuk koreksi format atau batas config yang lebih kecil.
+Judge tidak berjalan dari UI. Status didukung memerlukan semua sitasi didukung MiniCheck; error tetap belum diverifikasi.
 
 ## UI Streamlit dan demo lokal
 
-Jalankan dari root repo dengan Python `.venv` langsung. Streamlit sudah menjadi
-dependensi proyek; jangan menyinkronkan ulang environment CUDA hanya untuk UI.
+Demo historis M6 memakai config/korpus yang sesuai:
 
 ```powershell
 .venv/Scripts/python.exe -m streamlit run src/rag/ui/app.py --server.address 127.0.0.1 -- --config data/m6-multipaper/20261119T004114Z/config-citations-surplus-gpt-authorized-v1.yaml
 ```
 
-Buka `http://127.0.0.1:8501`. Command ini memakai database lokal empat paper M6,
-bukan `data/index/corpus.db` dari smoke test lama. Direktori demo default adalah
-`eval/results/2026-11-19T01-25-11Z_7492c6`. Untuk evaluasi lain, tambahkan
-`--demo-dir eval/results/<run_id>` setelah separator `--` dan gunakan config
-lengkap dengan `paths.db_path` yang cocok. UI membandingkan hash seluruh chunk
-dengan manifest run sebelum menawarkan contoh; ID jawaban dan pertanyaan juga
-harus cocok dengan database. Repo tidak membawa database atau PDF.
+`--demo-dir <laporan-M6>` dapat diberikan eksplisit; hash korpus wajib cocok. Demo membaca SQLite tanpa menulis sumber.
+Tanpa laporan bibliografi, UI menyediakan demo M6; form query lokal tetap memakai cache/izin di atas.
 
-**Demo tersimpan** membaca jawaban, klaim, metadata paper, dan label verifikasi
-yang sudah disimpan. Teks kutipan selalu dibaca dari SQLite kanonis. Mode ini
-tidak memuat model, menulis database, atau memanggil API. Label judge ditampilkan
-terpisah dan tidak menggantikan MiniCheck. Label yang hilang tetap belum
-diverifikasi, bukan supported. Klaim dengan satu sitasi yang tidak mendukung
-tetap ditandai perlu diperiksa meski sitasi lain didukung.
+## Evaluasi retrieval, sitasi, dan agreement
 
-**Tanya korpus** menerima pertanyaan dan empat mode retrieval. Setiap submit
-membuat salinan SQLite baru di `paths.cache_dir/ui-runs/<run_id>/`; retrieval
-membaca salinan itu dan indeks asli. Generation/verifikasi menulis hanya ke
-salinan dan laporan baru di direktori tersebut. Model dan cache tetap mengikuti
-config. Retrieval dan MiniCheck dapat memuat bobot lokal atau mengunduhnya bila
-belum tersedia. Default UI hanya membaca cache LLM. Untuk membuat jawaban baru,
-centang **Izinkan API berbayar saat cache kosong**, lalu klik **Cari bukti**.
-Izin berlaku pada setiap submit selama checkbox aktif; rerun widget tidak
-mengulang generation. Batas keras dua percobaan per submit mengikuti nilai
-terendah antara dua dan `generation.max_calls_per_run`, termasuk koreksi format.
-Retry transport tetap nol. Model, thinking, timeout, dan batas output mengikuti
-config; UI menampilkan model/provider dan batas token sebelum submit. Pertanyaan
-serta chunk terambil dikirim ke provider saat cache miss dengan izin aktif.
-Respons disimpan ke cache, termasuk saat izin API aktif cache tetap didahulukan.
-Judge tidak dijalankan. Tanpa bukti terambil, generator tidak dipanggil.
-Cache miss tanpa izin menjadi status gagal; hasil retrieval kosong menjadi
-"tidak ada bukti". Kegagalan verifier tetap mempertahankan jawaban dengan label
-belum diverifikasi.
-
-API key tetap berasal dari environment atau `.env` di root repo:
-`DEEPSEEK_API_KEY` untuk provider DeepSeek atau `OPENAI_API_KEY` untuk OpenAI.
-Jangan menulis key pada pertanyaan atau config YAML. Config M6 memakai
-`deepseek-flash` dengan thinking nonaktif. Key tidak diminta atau ditampilkan
-di UI. Key hilang, transport gagal, atau respons tidak valid tetap berstatus
-gagal; UI menunjukkan langkah pemeriksaan dan lokasi laporan lokal.
-
-UI menampilkan percobaan API, cache hit, dan token API tercatat. Percobaan dapat
-gagal sebelum request terkirim, misalnya karena key hilang; angka tersebut bukan
-bukti tagihan. Pemakaian yang hilang tetap ditandai belum diketahui. Batas dua
-percobaan adalah batas per submit, bukan batas rupiah atau anggaran sesi.
-
-CLI generation/evaluasi tetap tersedia untuk batch dengan izin dan batas
-terpisah. Gunakan pertanyaan, mode retrieval, config model, dan konteks yang sama
-agar cache cocok. Izin batch M6 tidak diperluas oleh penggunaan UI.
-Jangan menjalankan build indeks bersamaan dengan query. Salinan query dan
-rekaman demo berada di `data/`, tidak masuk Git.
-
-Urutan demo singkat:
-
-1. Pilih contoh pertama tentang empat dataset LegalBench-RAG.
-2. Buka sitasi `[1]`; baca kutipan, halaman, section, dan lisensinya.
-3. Buka paper sumber untuk memeriksa metadata pada arXiv.
-4. Pilih pertanyaan kedua; bandingkan klaim didukung dengan klaim perlu diperiksa.
-5. Pilih kontrol `multi027` untuk penolakan kosong dan `multi029` untuk klaim
-   penolakan tanpa bukti. Hasil asli dipertahankan, tanpa perbaikan skor M6.
-6. Buka **Tanya korpus**. Submit pertanyaan kosong untuk melihat validasi; lalu
-   gunakan pertanyaan pertama dengan hybrid+rerank untuk replay cache lokal.
-7. Untuk pertanyaan baru, aktifkan izin API dan submit pertanyaan tentang paper
-   dalam korpus. Periksa sitasi dan pemakaian token, lalu nonaktifkan izin API
-   untuk menguji replay cache. Langkah ini dapat memakai kuota provider.
-
-Pengujian widget memakai [AppTest resmi Streamlit](https://docs.streamlit.io/develop/api-reference/app-testing)
-dengan fixture dan mock, tanpa API berbayar. Hasil browser, lokasi rekaman GIF,
-serta batas verifikasi mesin ini dicatat di TASKS.md bagian M7.
-
-## Pilot Jev melalui Surplus
-
-Adapter Jev tersedia sebagai judge keputusan opsional, memakai dependensi HTTP
-yang sudah terpasang. Isi tiga variabel di `.env` sesuai `.env.example`:
-`SURPLUS_API_KEY`, `SURPLUS_API_URL`, dan `JEV_MODEL_ID`. Environment diprioritaskan.
-Jangan menaruh key di YAML atau command. URL menerima
-`https://api.surplusintelligence.ai/v1` atau URL lengkap `/v1/decisions`.
-
-Untuk perbandingan kecil tanpa menjalankan generator:
+Dataset harus cocok dengan ID/hash snapshot. `eval/questions.jsonl` berisi 30 pertanyaan M6 yang ditinjau pengguna;
+jangan menjalankannya pada korpus skripsi. Format dataset/metrik: [ARCHITECTURE.md](ARCHITECTURE.md#9-protokol-evaluasi).
 
 ```powershell
-.venv/Scripts/python.exe -m rag.evaluation.decisions --config data/jev-smoke/surplus-jev-v1/config.yaml --pairs data/m6-smoke/local-verifier-v1/reference-annotations.jsonl --limit 12
+.venv/Scripts/python.exe -m rag.evaluation --config <config-benchmark.yaml> --dataset <questions.jsonl> --mode all
+.venv/Scripts/python.exe -m rag.evaluation --stage citations --config <config-benchmark.yaml> --mode hybrid+rerank
+.venv/Scripts/python.exe -m rag.evaluation --stage agreement --config <config-benchmark.yaml> --annotations <labels.jsonl>
 ```
 
-Contoh memakai input dan cache dari eksperimen lokal yang tercatat di TASKS.md.
-Tanpa `--allow-api`, respons Jev hanya dibaca dari cache. Untuk request baru,
-tambahkan flag tersebut secara eksplisit; pengguna sudah mengizinkan pilot 12
-request pada sesi ini. Perluasan batch berbayar harus ditetapkan terpisah.
-Jumlah attempt dibatasi nilai terendah antara jumlah pasangan terpilih dan
-`verification.judge_max_calls_per_run`; request gagal tidak diulang otomatis.
-Runner berhenti pada error Jev pertama. Error MiniCheck, termasuk input melebihi
-512 token, tetap dicatat sebagai belum terverifikasi tanpa memotong bukti.
+`--with-judge` menilai sampel, tetapi tidak mengizinkan API tanpa `--allow-api`. Batas generation/judge berlaku untuk seluruh batch/mode.
+Laporan baru ada di `evaluation.output_dir`. Unknown/gagal/overlength tidak dianggap nol atau sukses; cek coverage dan denominator.
+Abstention yang benar memakai `{"claims": []}`. Klaim penolakan unsupported tetap gagal kontrak nol klaim.
 
-Input JSONL memuat `claim`, `chunk_id`, dan `text_sha256`; field evidence opsional
-tidak digunakan untuk inference karena teks dibaca dari SQLite kanonis. Pasangan
-duplikat, hash berubah, atau chunk hilang ditolak sebelum request. `--limit`
-adalah batas pasangan, bukan jumlah pertanyaan generation. Seed mengikuti config.
-Selection, hash, model/endpoint/backend efektif, probabilitas, confidence, token,
-HTTP latency, peak RAM/VRAM, serta agreement tersedia pada run baru di
-`evaluation.output_dir`. Tidak ada teks chunk lengkap yang disalin ke `eval/`.
+### Retrieval offline KB lokal lengkap
 
-Untuk mengaktifkan Jev pada sampel judge runner sitasi, gunakan salinan config
-lengkap dengan `verification.judge_provider: surplus`, lalu jalankan CLI
-`rag.evaluation --stage citations --with-judge`. Generator tetap mengikuti
-`generation`, termasuk cache dan batas generation tersendiri. `judge_model`
-diganti dengan nilai efektif `JEV_MODEL_ID` pada manifest. Model yang menjawab
-dicatat lengkap, misalnya `typesafe/jev-1.14-20261014` pada pilot ini. ID gateway
-yang diizinkan berbentuk versi Jev eksplisit; rolling alias ditolak.
+Dataset khusus snapshot 41 PDF berada di
+`data/skripsi/retrieval-local-all/2026-11-20T03-14-42Z_956cb9/questions.jsonl`.
+Statusnya acuan AI sementara, bukan gold manusia: 32 pertanyaan berbukti dari
+16 pasangan Indonesia/Inggris, ditambah empat kontrol tanpa bukti. Target chunk,
+halaman PDF, dan probe sumber dibekukan dalam `dataset-freeze.json` sebelum ranking.
+`source-audit.json` menyimpan kutipan dan teks halaman asli; jangan commit isinya.
 
-Jev mengembalikan keputusan dan distribusi probabilitas, tanpa penjelasan
-generatif. `rationale` disimpan null; field ini sudah nullable pada skema lama.
-Label `partially_supported` tetap berbeda dari supported. Metrik sitasi utama
-tetap dari MiniCheck; hasil Jev dan agreement dilaporkan terpisah. Angka agreement
-pilot bukan accuracy atau kappa terhadap manusia, dan bukan pengganti gold set.
-Detail kontrak ada di [dokumentasi Surplus](https://www.surplusintelligence.ai/docs/api-reference/decisions).
+Gunakan evaluator retrieval lama dengan config snapshot penuh dan output **baru**.
+`experiment.py` pada direktori dataset memakai config tersebut tanpa mengubahnya,
+mengalihkan output ke `baseline/` atau `replay/`, lalu memeriksa hash/replay.
+Tahap `prepare`, `baseline`, `replay`, dan `analyze` menolak menimpa artefak yang ada.
+Untuk percobaan lain, gunakan direktori run baru; jangan menjalankan `prepare` ulang
+pada dataset beku atau memakai dataset M6/S5 sebagai penggantinya.
+
+Retrieval top-8 sesuai batas konteks runtime dilaporkan terpisah dari Recall@5/10/20.
+Kontrol tanpa bukti dapat tetap mendapat hit: retrieval ini tidak mempunyai ambang
+abstention. Ketiadaan klaim/jawaban belum diuji sebelum tahap generation tersendiri.
+
+Refinement eksperimental berada di
+`data/skripsi/retrieval-refinement/2026-11-20T06-24-43Z_092865/summary.md`.
+Helper `hinted.py` menambah kandidat dari token teknis, memakai alias receipt yang
+divalidasi, dan mengutamakan nomor tabel pada paper eksplisit. Ini bukan mode CLI/UI
+produksi; model/config/indeks lama tetap. `policy.json` dan `freeze.json` mengikat
+aturan serta 20 pertanyaan validasi baru sebelum ranking. `run.py` menyimpan hasil
+dan replay baru; marker menolak eksekusi ulang di direktori yang sama.
+Dataset validasi, source audit, kutipan dan rencana generation tetap di `data/`.
+
+`generation-plan/plan.json` berstatus `proposed_not_authorized`: 8 pertanyaan,
+maksimum 14 request DeepSeek Flash non-thinking termasuk kegagalan/retry format,
+2048 output token/request, total maksimum 28672 output token; pesan maksimum
+65536 byte/request. MiniCheck lokal, tanpa JEV/judge. `review.md` dan `contexts.json`
+memuat pertanyaan serta bukti yang dikirim pada pilot yang kini selesai.
+Proposal `plan.json` tidak diubah; izin pengguna `boleh` terikat hash rencana pada
+`authorization.json`. Fase berbayar sudah memakai 7/14 request dan marker
+`paid-phase-started.json` tetap. **Jangan menjalankan fase paid lagi** atau memakai sisa
+jatah untuk batch baru. Setelah crash, periksa receipt/request-journal/cache, lalu
+replay tanpa API dahulu. `pilot.py replay` selalu cache-only dan memakai database baru.
+Fase `verify --directory <run>` hanya MiniCheck lokal; pasangan utuh/overlength tetap
+unverified. Run yang sudah mempunyai verification tidak ditimpa; gunakan replay baru.
+Hasil dan batas: `generation-plan/summary.md`, `results.json`, dan `source-review.md`.
+Generation/verification replay identik, nol API baru; UI/default produksi tetap.
+
+Diagnosis verifier offline tersimpan terpisah pada
+`data/skripsi/verifier-diagnosis/2026-11-20T12-46-00Z_5b9a21/summary.md`.
+86 probe/replay lokal menunjukkan sensitivitas bahasa LoRA dan atribusi Transformer;
+varian tabel tertentu menerima angka salah. Jangan mengganti label pilot atau memilih
+skor tertinggi dari beberapa view. Script `diagnose.py replay` hanya cache verifier
+lokal yang sudah lengkap; jangan mengulang `prepare`/`run` pada folder hasil ini.
+Tidak ada transformasi atau model baru dipromosikan dari diagnosis AI tersebut.
+
+GPT judge: `verification.judge_provider: surplus-chat`, keluarga model berbeda dari generator.
+Jev: `judge_provider: surplus`, `JEV_MODEL_ID=jev-1.14`; keputusan/probabilitas tanpa rationale generatif.
+Perbandingan pasangan cache-only tanpa generation:
+
+```powershell
+.venv/Scripts/python.exe -m rag.evaluation.decisions --config <config-pasangan.yaml> --pairs <pasangan.jsonl> --limit 12
+```
+
+Input pasangan memuat `claim`, `chunk_id`, `text_sha256`; evidence dibaca dari SQL. Partial tetap kelas tersendiri;
+MiniCheck overlength tetap unverified, tidak dipotong. Agreement antarmodel bukan akurasi manusia.
+
+## Evaluasi skripsi dengan RAGAS (S5)
+
+RAGAS 0.4.4 hanya pada environment isolated. Dataset 20 acuan AI tetap `ai_draft_unreviewed` meski memakai field `gold_*`;
+audit acuan bukan label klaim generation. Revisi acuan 018 yang diterima tidak mengganti acuan/skor lama secara retroaktif.
+Batch pilot dan lanjutan sudah selesai; periksa receipt/marker di TASKS-SKRIPSI.md sebelum replay.
+
+```powershell
+.venv/Scripts/python.exe -m rag.evaluation.ragas prepare --config <config-skripsi.yaml> --dataset <questions.jsonl> --offset 0 --limit 4 --max-generation-calls 8
+data/skripsi/s5-ragas/.venv/Scripts/python.exe -m rag.evaluation.ragas score --inputs <direktori-ragas-inputs> --max-judge-calls 12 --max-prompt-bytes 65536
+```
+
+Default cache-only. `--offset`/`--limit` memilih subset; manifest tetap mengikat dataset utuh.
+Faithfulness terhadap konteks terambil dan context recall terhadap acuan AI bukan precision sitasi atau gold manusia.
+Batas batch/token/prompt tetap keras, tanpa retry jaringan/judge. Telemetri RAGAS mati; laporan/replay selalu run baru.
+
+## Troubleshooting
+
+| Kondisi | Tindakan |
+|---|---|
+| `No module named uv` di `.venv` | Gunakan Python `.venv` langsung; jangan sinkronkan environment CUDA |
+| Model/cache belum ada saat offline | Pastikan model/revision tersedia; jangan menganggap cache miss sebagai hasil model |
+| Parsed/chunk/index/hash berbeda | Pakai direktori/database/run baru; jangan menghapus atau rebuild data lama otomatis |
+| Input melewati batas embedding/verifier | Chunk lebih kecil pada snapshot baru atau tetap unverified/held; jangan truncation |
+| LLM cache miss | Periksa model/config/backend; tanpa izin/budget baru jangan mengaktifkan API |
+| CUDA/OOM/konversi parsial | Catat kegagalan, pertahankan artefak; jangan menganggap partial sebagai build sukses |
+| UI bibliografi/demo tidak cocok | Pilih config dan laporan dari snapshot yang sama |

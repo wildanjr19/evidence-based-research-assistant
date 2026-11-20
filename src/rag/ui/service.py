@@ -1,7 +1,8 @@
+import hashlib
 import json
 import sqlite3
 from contextlib import closing
-from dataclasses import replace
+from dataclasses import asdict, replace
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -13,10 +14,124 @@ from rag.ids import is_valid_chunk_id, make_run_id
 from rag.indexing.embedding import text_hash
 from rag.indexing.pipeline import load_chunks
 from rag.retrieval.pipeline import Retriever
+from rag.retrieval.store import RetrievalStore
 from rag.verification.minicheck import CachedVerifier
 from rag.verification.pipeline import verify_answer
 
 MAX_API_CALLS_PER_SUBMIT = 2
+
+
+def load_corpus(config: Config, bibliography_report: Path | None = None) -> dict:
+    """Read corpus identity and bind bibliography aliases to admitted PDF snapshots."""
+    store = RetrievalStore(config)
+    store.bm25("corpus", 1)
+    with closing(connect_corpus(config)) as connection:
+        connection.row_factory = sqlite3.Row
+        papers = [
+            dict(row)
+            for row in connection.execute(
+                """SELECT paper.paper_id, paper.title, paper.pdf_sha256,
+                   paper.license, paper.landing_url, paper.parse_status,
+                   COUNT(chunk.chunk_id) AS chunks
+                   FROM paper LEFT JOIN chunk USING (paper_id)
+                   GROUP BY paper.paper_id ORDER BY paper.paper_id"""
+            )
+        ]
+        chunks = store.chunks
+    aliases = {}
+    registered = None
+    if bibliography_report is not None:
+        prepared = json.loads(bibliography_report.read_text(encoding="utf-8"))
+        if prepared.get("kind") in {"user_local_collection", "evidence_checked_local_pdf_manifest"}:
+            aliases, registered = _local_aliases(papers, prepared)
+        else:
+            download_bytes = Path(prepared["download_report"]).read_bytes()
+            if hashlib.sha256(download_bytes).hexdigest() != prepared["download_report_sha256"]:
+                raise ValueError("Laporan unduhan berbeda dari laporan prepare.")
+            download = json.loads(download_bytes)
+            admitted = {
+                ref["reference_id"]: ref
+                for ref in download["references"]
+                if ref["status"] == "pdf_ready"
+            }
+            references_bytes = (
+                Path(download["config"]["bibliography_run"]) / "references.jsonl"
+            ).read_bytes()
+            if (
+                hashlib.sha256(references_bytes).hexdigest()
+                != download["input_sha256"]["references.jsonl"]
+            ):
+                raise ValueError("Daftar referensi berbeda dari laporan unduhan.")
+            references = [
+                json.loads(line) for line in references_bytes.decode("utf-8").splitlines()
+            ]
+            by_id = {ref["reference_id"]: ref for ref in references}
+            snapshots = {p["paper_id"]: p for p in prepared["papers"]}
+            if len(snapshots) != len(prepared["papers"]) or set(snapshots) != {
+                p["paper_id"] for p in papers
+            }:
+                raise ValueError("Laporan prepare tidak cocok dengan paper dalam korpus.")
+            for paper in papers:
+                snapshot = snapshots[paper["paper_id"]]
+                keys = by_id[snapshot["reference_id"]]["citation_keys"]
+                downloaded = admitted[snapshot["reference_id"]]
+                if (
+                    snapshot["pdf_sha256"] != paper["pdf_sha256"]
+                    or snapshot["pdf_sha256"] != downloaded["pdf_sha256"]
+                    or keys != snapshot["citation_keys"]
+                    or keys != downloaded["citation_keys"]
+                    or not keys
+                    or not all(isinstance(key, str) and key.strip() for key in keys)
+                ):
+                    raise ValueError("Identitas PDF atau citation key berbeda dari bibliografi.")
+                aliases[paper["paper_id"]] = keys
+            registered = len(references)
+    identity = dict(config=asdict(config), papers=papers, chunks=chunks, aliases=aliases)
+    return dict(
+        papers=papers,
+        indexed=sum(p["chunks"] > 0 for p in papers),
+        chunks=len(chunks),
+        registered=registered,
+        citation_keys=aliases,
+        fingerprint=text_hash(json.dumps(identity, sort_keys=True, ensure_ascii=False)),
+    )
+
+
+def _local_aliases(papers: list[dict], prepared: dict) -> tuple[dict, int]:
+    manifest_bytes = Path(prepared["manifest"]).read_bytes()
+    if hashlib.sha256(manifest_bytes).hexdigest() != prepared["manifest_sha256"]:
+        raise ValueError("Manifest lokal berbeda dari receipt admission.")
+    manifest = json.loads(manifest_bytes)
+    bibliography = Path(manifest["bibliography_run"])
+    for name, expected in manifest["bibliography_sha256"].items():
+        if hashlib.sha256((bibliography / name).read_bytes()).hexdigest() != expected:
+            raise ValueError("Bibliografi lokal berubah.")
+    entries = [
+        json.loads(line)
+        for line in (bibliography / "entries.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    references = {
+        line
+        for line in (bibliography / "references.jsonl").read_text(encoding="utf-8").splitlines()
+    }
+    snapshots = {row["paper_id"]: row for row in prepared["papers"]}
+    if len(snapshots) != len(prepared["papers"]) or set(snapshots) != {
+        p["paper_id"] for p in papers
+    }:
+        raise ValueError("Receipt lokal tidak cocok dengan seluruh korpus.")
+    aliases = {}
+    for paper in papers:
+        snapshot = snapshots[paper["paper_id"]]
+        matching = [
+            e
+            for e in entries
+            if e["citation_key"] == snapshot["citation_key"]
+            and e["reference_id"] == snapshot["reference_id"]
+        ]
+        if not matching or snapshot["pdf_sha256"] != paper["pdf_sha256"]:
+            raise ValueError("Identitas PDF atau citation key lokal berbeda.")
+        aliases[paper["paper_id"]] = [snapshot["citation_key"]]
+    return aliases, len(references)
 
 
 def source_url(value: str | None) -> str | None:
@@ -29,6 +144,14 @@ def source_url(value: str | None) -> str | None:
         )
     except ValueError:
         return None
+
+
+def license_label(value: str) -> str:
+    return (
+        "Belum diverifikasi (koleksi PDF lokal)"
+        if value == "LicenseRef-UserProvided-Unverified"
+        else value
+    )
 
 
 def load_demo(config: Config, directory: Path) -> list[dict]:

@@ -44,6 +44,43 @@ def test_deterministic_chunks_preserve_overlap_and_cross_page_citations() -> Non
     assert result.dropped_tokens == 0
 
 
+def test_model_bounded_windows_keep_text_pages_and_make_progress_with_large_overlap() -> None:
+    source = document(
+        TextBlock(1, "satu dua tiga", "Methods", 1),
+        TextBlock(2, "empat lima enam", "Methods", 1),
+    )
+    config = replace(CONFIG, target_tokens=6, min_tokens=1, overlap_tokens=4)
+
+    def fits(text: str) -> bool:
+        return len(text.split()) * 3 <= 6
+
+    result = chunk_document(source, config, fits_model=fits)
+    assert result.dropped_tokens == 0
+    assert all(fits(chunk.text) for chunk in result.chunks)
+    assert {word for chunk in result.chunks for word in chunk.text.split()} == {
+        "satu",
+        "dua",
+        "tiga",
+        "empat",
+        "lima",
+        "enam",
+    }
+    cross_page = next(chunk for chunk in result.chunks if chunk.text == "tiga\nempat")
+    assert (cross_page.page_start, cross_page.page_end) == (1, 2)
+    assert result == chunk_document(source, config, fits_model=fits)
+
+
+def test_model_limit_prevents_short_tail_merge_without_losing_new_tokens() -> None:
+    source = document(TextBlock(1, "one two three four five six seven eight", None, None))
+    result = chunk_document(
+        source,
+        replace(CONFIG, overlap_tokens=1, min_tokens=4),
+        fits_model=lambda text: len(text.split()) <= 6,
+    )
+    assert [chunk.n_tokens for chunk in result.chunks] == [6, 3]
+    assert result.dropped_tokens == 0
+
+
 def test_sections_do_not_mix_and_repeated_titles_keep_their_order() -> None:
     source = document(
         TextBlock(1, "one two three four", "Methods", 1),

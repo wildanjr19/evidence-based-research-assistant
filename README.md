@@ -6,7 +6,15 @@ Proyek ini memakai Retrieval-Augmented Generation (RAG): sistem mengambil potong
 
 ## Ruang lingkup
 
-Versi pertama berfokus pada literatur **RAG evaluation** dari arXiv, dengan target 100 sampai 500 paper open access berlisensi yang diizinkan. Sistem ditujukan untuk membantu peneliti menelusuri fakta, membandingkan temuan, dan menyintesis bukti lintas paper.
+Arah pengembangan aktif memakai **referensi skripsi pengguna dari Mendeley**.
+Impor BibTeX sudah tersedia; pengumpulan PDF dan korpus pilot dilacak di
+[TASKS-SKRIPSI.md](TASKS-SKRIPSI.md). Hanya dokumen open access berlisensi jelas
+yang boleh menjadi bukti. Sistem membantu menelusuri fakta, membandingkan
+temuan, dan menyintesis bukti lintas paper.
+
+Benchmark MVP **RAG evaluation** dari arXiv tetap menjadi hasil historis yang
+terpisah. Target awal 100–500 paper belum tercapai dan tidak menjadi syarat
+jumlah referensi untuk korpus skripsi.
 
 Parsing, indexing, retrieval, dan verifikasi dirancang berjalan lokal; generasi jawaban memakai API LLM. PDF, teks penuh, indeks, dan cache tidak disimpan di Git.
 
@@ -23,6 +31,26 @@ Stack utama: Python, PyMuPDF, BGE, LanceDB, SQLite FTS5, dan UI Streamlit. Rinci
 ## Status
 
 **M0 sampai M7 selesai untuk benchmark awal:** ingestion, parsing, chunking, indexing, retrieval, generation bersitasi, MiniCheck lokal, judge generatif GPT-4o-mini melalui Surplus, dan UI demo Streamlit.
+
+**Korpus skripsi S0–S4 pilot:** scope ditetapkan dan impor offline membaca 83 entri
+menjadi 82 referensi berdasarkan DOI/metadata. Lima PDF pilot berlisensi sudah
+tersedia lokal (66 halaman), dengan 26/30 request jaringan dan replay tanpa
+request baru. Parsing/indexing lima PDF selesai: 310 chunk, 310 vektor, dan
+310 FTS; replay offline identik. Pencarian Indonesia/Inggris baru diuji dengan
+12 query draf AI, belum benchmark berlabel manusia. Tabel/section parser masih
+memiliki batas. UI skripsi tersedia dengan jumlah referensi/dokumen terindeks
+terpisah dan citation key asal pada sitasi. Retrieval/reranking CPU dan alur
+jawaban mock sudah direplay. S5 menambahkan RAGAS terpisah dan 20 pertanyaan
+draf AI; pilot nyata empat pertanyaan memakai 4 request DeepSeek dan 11 judge
+GPT-4o-mini, dengan replay identik tanpa request baru. Skor ini belum menjadi
+akurasi manusia. Audit kecil selesai: 9 acuan awal dan 1 revisi diterima;
+keputusan verifier masih terbuka.
+Evaluasi penuh S5, cakupan full text Indonesia, dan
+sisa koleksi masih terbuka; detail di [TASKS-SKRIPSI.md](TASKS-SKRIPSI.md).
+Panduan perintah impor ada di [USAGE.md](USAGE.md#impor-referensi-skripsi-s1).
+Perintah membuka korpus skripsi ada di
+[USAGE.md bagian S4](USAGE.md#tanya-korpus-skripsi-di-streamlit-s4).
+Panduan evaluasi otomatis ada di [USAGE.md bagian S5](USAGE.md#evaluasi-skripsi-dengan-ragas-s5).
 
 Dataset yang ditinjau pengguna berisi 30 pertanyaan lintas empat paper berlisensi, dengan 236 chunk. [Laporan M6](eval/results/2026-11-19T01-25-11Z_7492c6/m6-summary.md) memuat hasil, biaya estimasi, dan pengulangan dari cache. [Analisis kegagalan](eval/results/2026-11-19T01-25-11Z_7492c6/failure-analysis.md) membahas sitasi yang tidak didukung dan kontrol abstention. Label manusia 52 pasangan dari eksperimen satu paper dilaporkan terpisah; accuracy terhadap manusia pada klaim generation baru belum diukur. Target korpus 100–500 paper dan inference model di GPU masih tertunda. Catatan verifikasi dan handoff ada di [TASKS.md](TASKS.md).
 
@@ -69,5 +97,6 @@ Untuk menyiapkan environment dan menjalankan pipeline, ikuti [panduan penggunaan
 | [OVERVIEW.md](OVERVIEW.md) | Tujuan, ruang lingkup, pilihan stack, dan batasan proyek |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Arsitektur, skema data, format sitasi, dan protokol evaluasi |
 | [TASKS.md](TASKS.md) | Milestone, acceptance criteria, hasil verifikasi, dan handoff |
+| [TASKS-SKRIPSI.md](TASKS-SKRIPSI.md) | Scope dan tahapan korpus referensi skripsi |
 | [DESIGN.md](DESIGN.md) | Sistem desain visual UI |
 | [AGENTS.md](AGENTS.md) | Aturan kerja untuk AI coding agent |

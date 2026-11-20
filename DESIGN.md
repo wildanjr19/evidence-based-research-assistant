@@ -104,3 +104,17 @@ provider, batas output, dan pengiriman pertanyaan/chunk ke provider. Checkbox
 native memakai target minimal 44px dan fokus yang sama dengan radio. Caption
 setelah submit menunjukkan percobaan, cache hit, serta token tercatat; kegagalan
 API dibedakan dari cache miss dan ketiadaan bukti. Dial serta palet tetap 1/2/1.
+
+### Korpus bibliografi S4
+
+Dial tetap **ENERGY 1 / RHYTHM 2 / MOTION 1**. Caption korpus aktif membedakan
+referensi terdaftar dari paper terindeks; ekspander memuat judul/citation key
+sebagai pemeriksaan cakupan sebelum bertanya. Form tetap menjadi fokus awal.
+Pilot bibliografi langsung membuka form, tanpa pilihan demo yang merujuk korpus
+lain. Sitasi memuat citation key, judul, dan halaman PDF agar peneliti dapat
+mencocokkan bukti dengan daftar pustaka; ID panjang membungkus pada teks biasa.
+Section ditandai sebagai perkiraan parser, disertai catatan tentang tabel/rumus.
+
+Heading jawaban memakai h2 setelah h1. Tombol submit diberi selector khusus
+untuk mempertahankan target minimal 44px terhadap gaya native Streamlit 40px.
+Tidak ada palet, aset, navigasi, atau animasi baru.

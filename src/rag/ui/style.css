@@ -20,6 +20,7 @@ p, .stText { font-size: 1rem; line-height: 1.65; }
 button, summary, [role="radio"], [role="combobox"], a { cursor: pointer; }
 button, [role="combobox"], [data-testid="stExpander"] summary { min-height: 2.75rem; }
 button { min-width: 2.75rem; }
+[data-testid="stFormSubmitButton"] button { min-height: 2.75rem; }
 [data-testid="stRadio"] label, [data-testid="stCheckbox"] label {
     min-height: 2.75rem;
     padding-right: 0.5rem;

@@ -1,3 +1,4 @@
+import hashlib
 import json
 import sqlite3
 from dataclasses import replace
@@ -242,7 +243,7 @@ def test_app_reports_missing_demo_and_config(demo: tuple, monkeypatch: pytest.Mo
     )
     app = AppTest.from_function(launch_app, kwargs=dict(demo_dir=str(demo[1]))).run()
     assert not app.exception
-    assert "Demo tidak cocok" in app.error[0].value
+    assert "Korpus belum tersedia" in app.error[0].value
 
     def invalid(_: str) -> None:
         raise ValueError("invalid config")
@@ -379,3 +380,170 @@ def test_app_api_error_shows_setup_and_usage_not_cache_message(
     assert any("Percobaan API: 1" in caption.value for caption in app.caption)
     assert any("belum diketahui" in caption.value for caption in app.caption)
     assert any("local-report.json" in text.value for text in app.text)
+
+
+@pytest.fixture
+def bibliography(demo: tuple, tmp_path: Path) -> Path:
+    config, _, _ = demo
+    refs = tmp_path / "references.jsonl"
+    refs.write_text(
+        json.dumps(dict(reference_id="indexed", citation_keys=["Fixture2024"]))
+        + "\n"
+        + json.dumps(dict(reference_id="unavailable", citation_keys=["Unavailable2025"])),
+        encoding="utf-8",
+    )
+    download = tmp_path / "download.json"
+    download.write_text(
+        json.dumps(
+            dict(
+                config=dict(bibliography_run=str(tmp_path)),
+                input_sha256={"references.jsonl": hashlib.sha256(refs.read_bytes()).hexdigest()},
+                references=[
+                    dict(
+                        reference_id="indexed",
+                        status="pdf_ready",
+                        pdf_sha256="a" * 64,
+                        citation_keys=["Fixture2024"],
+                    )
+                ],
+            )
+        ),
+        encoding="utf-8",
+    )
+    with sqlite3.connect(config.paths.db_path) as connection:
+        paper_id, digest = connection.execute("SELECT paper_id, pdf_sha256 FROM paper").fetchone()
+    prepared = tmp_path / "prepare.json"
+    prepared.write_text(
+        json.dumps(
+            dict(
+                download_report=str(download),
+                download_report_sha256=hashlib.sha256(download.read_bytes()).hexdigest(),
+                papers=[
+                    dict(
+                        paper_id=paper_id,
+                        pdf_sha256=digest,
+                        reference_id="indexed",
+                        citation_keys=["Fixture2024"],
+                    )
+                ],
+            )
+        ),
+        encoding="utf-8",
+    )
+    return prepared
+
+
+def test_corpus_counts_aliases_and_readonly_identity(demo: tuple, bibliography: Path) -> None:
+    config, _, _ = demo
+    before = Path(config.paths.db_path).read_bytes()
+    corpus = service.load_corpus(config, bibliography)
+    assert corpus["registered"] == 2
+    assert corpus["indexed"] == 1
+    assert corpus["chunks"] == 4
+    assert list(corpus["citation_keys"].values()) == [["Fixture2024"]]
+    assert service.load_corpus(config, bibliography) == corpus
+    assert service.load_corpus(config)["registered"] is None
+    assert Path(config.paths.db_path).read_bytes() == before
+
+
+def test_corpus_rejects_incomplete_keyword_index(demo: tuple, bibliography: Path) -> None:
+    with sqlite3.connect(demo[0].paths.db_path) as connection:
+        connection.execute("DELETE FROM chunk_fts WHERE chunk_id = ?", (FIRST,))
+    with pytest.raises(ValueError, match="Keyword index differs"):
+        service.load_corpus(demo[0], bibliography)
+
+
+@pytest.mark.parametrize("field", ["paper_id", "pdf_sha256", "citation_keys", "duplicate"])
+def test_corpus_rejects_foreign_snapshot_or_alias(
+    demo: tuple, bibliography: Path, field: str
+) -> None:
+    record = json.loads(bibliography.read_text())
+    if field == "duplicate":
+        record["papers"].append(record["papers"][0])
+    else:
+        record["papers"][0][field] = ["Invented2025"] if field == "citation_keys" else "wrong"
+    bibliography.write_text(json.dumps(record), encoding="utf-8")
+    with pytest.raises(ValueError):
+        service.load_corpus(demo[0], bibliography)
+
+
+@pytest.mark.parametrize("filename", ["references.jsonl", "download.json"])
+def test_corpus_rejects_modified_provenance(demo: tuple, bibliography: Path, filename: str) -> None:
+    path = bibliography.parent / filename
+    path.write_bytes(path.read_bytes() + b" ")
+    with pytest.raises(ValueError, match="berbeda"):
+        service.load_corpus(demo[0], bibliography)
+
+
+def launch_bibliography_app(report: str) -> None:
+    from rag.ui.app import main
+
+    main(bibliography_report=report)
+
+
+def test_bibliography_app_query_first_and_citation_keys(
+    demo: tuple, bibliography: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config, _, generation = demo
+    monkeypatch.setattr("rag.ui.app.load_config", lambda _: config)
+    monkeypatch.setattr(
+        "rag.ui.app.run_question",
+        lambda *args, **kwargs: service.load_answer(config, generation["answer_id"]),
+    )
+    app = AppTest.from_function(
+        launch_bibliography_app, kwargs=dict(report=str(bibliography))
+    ).run()
+    assert not app.exception
+    assert not app.radio
+    assert any("2 referensi terdaftar · 1 paper terindeks" in c.value for c in app.caption)
+    assert app.checkbox[0].value is False
+    app.text_area[0].set_value("Apa buktinya?")
+    app.button[0].click().run()
+    assert not app.exception
+    assert any("Fixture2024" in exp.label and "hal. PDF 1" in exp.label for exp in app.expander)
+    assert not any("Unavailable2025" in exp.label for exp in app.expander)
+    assert any(FIRST in element.value for element in app.text)
+    assert any("perkiraan parser" in c.value for c in app.caption)
+    app.checkbox[0].check()
+    app.button[0].click().run()
+    assert app.checkbox[0].value is True
+    changed = replace(config, generation=replace(config.generation, model="changed-model"))
+    monkeypatch.setattr("rag.ui.app.load_config", lambda _: changed)
+    app.run()
+    assert not app.exception
+    assert app.checkbox[0].value is False
+    assert not any("Klaim 1" in m.value for m in app.markdown)
+
+
+def test_local_receipt_binds_ui_aliases_and_explains_unverified_license(tmp_path):
+    bib = tmp_path / "bibliography"
+    bib.mkdir()
+    entry = dict(citation_key="Local2026", reference_id="ref-local")
+    (bib / "entries.jsonl").write_text(json.dumps(entry))
+    (bib / "references.jsonl").write_text(json.dumps(dict(reference_id="ref-local")))
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            dict(
+                bibliography_run=str(bib),
+                bibliography_sha256={
+                    name: hashlib.sha256((bib / name).read_bytes()).hexdigest()
+                    for name in ["entries.jsonl", "references.jsonl"]
+                },
+            )
+        )
+    )
+    paper = dict(paper_id="local:sha256_fixture", pdf_sha256="fixture")
+    receipt = dict(
+        manifest=str(manifest),
+        manifest_sha256=hashlib.sha256(manifest.read_bytes()).hexdigest(),
+        papers=[dict(paper, **entry)],
+    )
+    aliases, registered = service._local_aliases([paper], receipt)
+    assert aliases == {paper["paper_id"]: ["Local2026"]}
+    assert registered == 1
+    assert "Belum diverifikasi" in service.license_label("LicenseRef-UserProvided-Unverified")
+    assert service.source_url("file:///D:/local/paper.pdf") is None
+    receipt["papers"][0]["pdf_sha256"] = "other"
+    with pytest.raises(ValueError, match="Identitas"):
+        service._local_aliases([paper], receipt)

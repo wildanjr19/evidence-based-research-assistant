@@ -1,178 +1,130 @@
 # AGENTS.md
 
-Panduan kerja untuk AI coding agent (Codex, DeepSeek-based agent, dll.) di repo ini.
-Bagian bertanda `TODO` harus disesuaikan dengan kondisi repo sebenarnya.
+Panduan agent untuk Evidence-Based Research Assistant, sistem RAG lokal dengan sitasi per klaim.
 
 ## 1. Proyek
 
-Evidence-Based Research Assistant: sistem RAG lokal untuk literatur ilmiah.
-Jawaban harus berisi klaim yang masing-masing menunjuk ke chunk sumber (paper, halaman, kutipan), dan ketepatan sitasinya diukur.
+Arah aktif: korpus referensi skripsi dari ekspor Mendeley, terpisah dari benchmark MVP.
+82 referensi menjadi kandidat audit. Input lokal di `data/reference-skripsi/`: 41 PDF + 3 TXT dan manifest 44 entri;
+seluruh PDF sudah diproses sebagai koleksi lokal dengan label sumber/lisensi.
+KB lokal terbaru: 41 PDF/746 halaman terdaftar; 40 searchable, 2.514 chunk/vektor/FTS.
+Scan Parasuraman belum memiliki chunk lolos kualitas; tiga TXT belum berpeta halaman.
+Bibliografi KB turunan berisi 83 referensi setelah pencatatan Szeghalmy; sumber Mendeley 82 tetap utuh.
+Koleksi PDF pengguna boleh diproses lokal meski DOI/lisensi belum terverifikasi, sesuai instruksi 2026-11-20.
+Status sumber/lisensi menjadi label, bukan penghalang admission. Downloader lama tetap memakai syarat lisensi.
+Bahasa Indonesia/Inggris harus diuji; gate kualitas parsing tetap berlaku.
 
-Sumber kebenaran, baca sebelum mengubah arsitektur:
-- `OVERVIEW.md`: tujuan, stack, batasan.
-- `ARCHITECTURE.md`: arsitektur, skema data, format ID/sitasi, protokol evaluasi, keputusan desain.
-- `DESIGN.md`: sistem desain visual UI (warna, tipografi, spacing). Bukan dokumen arsitektur.
-- `TASKS.md`: milestone dan acceptance criteria.
-- `USAGE.md`: setup, perintah pipeline, dan batas penggunaan. README berfokus pada pengantar proyek; catatan verifikasi/handoff disimpan di TASKS.md.
+Baca sesuai pekerjaan:
 
-Jika kode dan dokumen bertentangan, jangan menebak. Tanyakan, atau tandai ketidaksesuaiannya di jawabanmu.
+- [ARCHITECTURE.md](ARCHITECTURE.md): kontrak data, ID/sitasi, dan perilaku pipeline.
+- [USAGE.md](USAGE.md): setup, perintah, dan troubleshooting.
+- [KB-PREPARATION.md](KB-PREPARATION.md): alur korpus, gate kualitas, dan persiapan batch.
+- [TASKS-SKRIPSI.md](TASKS-SKRIPSI.md): scope aktif, persetujuan, hasil, dan pekerjaan tersisa.
+- [TASKS.md](TASKS.md): riwayat MVP dan verifikasi; bukan daftar instruksi aktif setiap sesi.
+- [OVERVIEW.md](OVERVIEW.md): tujuan produk; [DESIGN.md](DESIGN.md): desain visual, baca untuk perubahan UI.
 
-## 2. Perintah
+Jika kode dan dokumen bertentangan, periksa sumber dan tandai ketidaksesuaian; jangan menebak.
+Jangan menambah riwayat eksperimen panjang ke dokumen ini; simpan pada kedua file TASKS.
 
-Perintah fondasi sudah diverifikasi pada M0. Jalankan dari root repo; bentuk module tidak memerlukan `uv` di PATH atau aktivasi virtual environment. Jika belum terpasang: `python -m pip install --user uv`.
+## 2. Perintah dan environment
 
-```bash
-python -m uv sync --locked                        # install dependensi dari lockfile
-python -m uv run python -m pytest -q               # semua test (tanpa API berbayar)
-python -m uv run python -m pytest -q -m "not gpu"  # test tanpa GPU
-python -m uv run ruff check .                      # lint
-python -m uv run ruff format --check .             # format
+Jalankan dari root repo memakai Python `.venv` langsung. **Jangan `uv sync`/`uv run` pada environment CUDA saat ini**:
+Torch dipasang manual dan sumber CUDA belum diselaraskan dengan lockfile. Launcher `pytest.exe` diblokir Windows.
+
+```powershell
+.venv/Scripts/python.exe -m pytest -q
+.venv/Scripts/python.exe -m ruff check .
+.venv/Scripts/python.exe -m ruff format --check .
 ```
 
-Di mesin pengembangan Windows, launcher `pytest.exe` diblokir Application Control; pemanggilan melalui `python -m pytest` sudah diverifikasi.
+Docling terisolasi di `data/skripsi/docling-pilot/.venv`, lock `eval/docling-requirements.lock`.
+RAGAS terisolasi di `data/skripsi/s5-ragas/.venv`, lock `eval/ragas-requirements.lock`.
+Jangan memasang keduanya ke `.venv` utama atau menyinkronkan environment satu sama lain.
+Shared cache model boleh dipakai. Uji encoding GPU harus memakai cache baru agar membuktikan inference nyata.
 
-Jika `.venv` sudah aktif, panggil `python -m pytest`, `python -m ruff`, atau `python -m rag...` langsung. `uv` terpasang di Python luar; `python -m uv` dalam `.venv` dapat gagal dengan `No module named uv`. Di Windows, `py -3.11 -m uv` memakai Python luar bila diperlukan.
+Status operasional terakhir (2026-11-20):
 
-Perintah M1 (melakukan request arXiv; jalankan berurutan):
+| Bagian | Status |
+|---|---|
+| Korpus/UI aktif | `configs/skripsi-pilot.yaml`: PyMuPDF, 5 PDF, 310 chunk/vektor/FTS |
+| Parser kandidat | Docling 2.151.1, Heron/TableFormer accurate/EasyOCR id/en; `do_cell_matching=True` |
+| Snapshot Docling awal | 3 PDF/41 halaman, 131 chunk/vektor/FTS; 32/55 tabel searchable, 23 ditahan |
+| Pilot input lokal terbaru | Aufar/Dewi/Koto2020: 34 halaman, 118 chunk/vektor/FTS; 9/20 tabel searchable, 11 ditahan; default hybrid khusus snapshot ini |
+| KB kandidat tahap 1 | `data/skripsi/kb-build/2026-11-20T01-06-05Z_f81029/kb/`: 17 PDF, 903 chunk; 44 tabel searchable/100 ditahan |
+| KB kandidat tahap 2 | `data/skripsi/kb-expansion/2026-11-20T01-33-36Z_3f61ac/kb/`: 18 PDF, 974 chunk; 48 tabel searchable/104 ditahan; replay identik |
+| KB koleksi lokal lengkap | `data/skripsi/kb-local-all/2026-11-20T01-59-17Z_c95c3b/kb/`: 41 PDF terdaftar/40 searchable, 2.514 chunk; 100 tabel searchable/208 ditahan |
+| Runtime jawaban/verifier | DeepSeek Flash non-thinking + MiniCheck; JEV `jev-1.14` belum dipromosikan |
+| Verifikasi terakhir kode | 567 test utama + 35 test isolated lulus; satu modul RAGAS dilewati; Ruff bersih |
 
-```bash
-python -m uv run python -m rag.ingestion discover --config configs/config.yaml
-python -m uv run python -m rag.ingestion fetch --config configs/config.yaml
-```
-
-Sudah diuji nyata dengan config terpisah yang membatasi satu kandidat. Default repo membatasi 10 kandidat; korpus final belum diunduh. Test tetap memakai fixture lokal.
-
-Runner evaluasi retrieval M4 dan jalur sitasi M6 sudah tersedia. Dataset `eval/questions.jsonl` memuat 30 pertanyaan lintas empat paper yang disusun AI lalu ditinjau dan disetujui pengguna pada 2026-11-19. Manifest persetujuan dan hash ada di `eval/questions.reviewed-v1.manifest.json`; gunakan korpus/config M6 multipaper yang sesuai, bukan indeks lama. Draf lama dan riwayat anotasi tetap ada di `eval/README.md`. Perintah dan batas metrik ada di `USAGE.md`.
-
-Perintah M4 (indeks M3 harus sudah lengkap; penggunaan reranker pertama mengunduh bobot):
-
-```bash
-.venv/Scripts/python.exe -m rag.retrieval --config configs/config.yaml --question "How is RAG retrieval evaluated?" --mode hybrid
-.venv/Scripts/python.exe -m rag.evaluation --config configs/config.yaml --dataset data/validation/questions.jsonl --mode all
-```
-
-Path `data/validation/questions.jsonl` pada contoh harus disiapkan lebih dulu. Empat mode diuji dengan fixture lokal dan smoke test CPU pada satu paper. BGE reranker nyata berhasil menghitung 105 pasangan; pengulangan offline memakai 105 cache hit dengan ranking identik. Query embedding/reranker GPU dan korpus penuh belum diuji. Laporan per mode memakai direktori run baru; detail verifikasi/handoff ada di TASKS.md bagian M4.
-
-Perintah M5 (default hanya membaca cache LLM; cache miss tidak memanggil API):
-
-```bash
-.venv/Scripts/python.exe -m rag.generation --config configs/config.yaml --question "How is RAG retrieval evaluated?" --mode hybrid
-```
-
-Panggilan LLM nyata memerlukan `--allow-api`, model yang tersedia, dan key provider di environment atau `.env` pada direktori kerja. Environment diprioritaskan; loader hanya membaca key provider terpilih dan tidak mengubah environment. Format `.env` ada di USAGE.md. Pengguna memilih `deepseek-flash`, dengan `generation.thinking: false`; mode thinking termasuk identitas cache. M5 diuji dengan mock/transport HTTP lokal. Uji API nyata setelah penutupan M5 berhasil pada satu pertanyaan (satu request); pengulangan memakai cache tanpa request baru. Test otomatis tetap tanpa API berbayar. Smoke test memakai salinan database/index, retrieval CPU nyata, dan cache respons. Tabel `run`/`answer`/`claim` mengikuti skema ARCHITECTURE.md; tabel sumber tetap. Detail RAM/VRAM serta handoff ada di TASKS.md bagian M5.
-
-M6 ditutup pada 2026-11-19 untuk benchmark kecil empat paper CC-BY-4.0, 236 chunk, dan 30 pertanyaan yang disusun AI lalu ditinjau/disetujui pengguna. Target korpus v1 100-500 paper belum tercapai. Retrieval empat mode dan replay offline selesai dengan ranking/skor identik. Generation memakai DeepSeek Flash non-thinking; judge generatif GPT-4o-mini melalui Surplus memberi label dan alasan, terpisah dari pilot keputusan Jev. Provider `surplus-chat` membaca `GPT_MODEL_ID`, `SURPLUS_API_KEY`, dan `SURPLUS_API_URL`; endpoint dibatasi ke HTTPS Surplus `/v1`. Key OpenAI langsung tidak diperlukan.
-
-Pengguna mengizinkan maksimum 60 request DeepSeek dan 50 judge; run memakai 30/28 request. Laporan final `eval/results/2026-11-19T01-25-11Z_7492c6/m6-summary.md`: precision sitasi MiniCheck 86,24%, faithfulness 88,12%, hallucinated citation rate 0%, abstention 3/4. Satu penolakan ditulis sebagai klaim unsupported sehingga gagal kontrak abstention; jangan mengubah skor secara retroaktif. Replay `2026-11-19T01-31-11Z_75bb36` memakai nol request baru dengan hasil identik. Judge/MiniCheck sepakat 22/28, kappa 0 karena judge hanya menghasilkan supported. Agreement bukan accuracy manusia.
-
-Seluruh 52 pasangan referensi satu paper berlabel manusia tersedia secara lokal; bukan label klaim generation baru. Dua belas pilot ditinjau setelah usulan AI terlihat; laporkan terpisah dari 40 pasangan batch 1-4 (coverage 35/40, agreement 30/35, kappa 0,710265). Pertahankan label partial dan alasan kosong apa adanya; jangan memindahkan label ke chunk baru atau mengganti label agar cocok dengan model. Accuracy manusia pada benchmark jawaban baru belum diukur. Input MiniCheck di atas batas token tetap unverified tanpa truncation. Default generation/judge hanya membaca cache; perluasan batch API harus mendapat izin dengan batas konkret. Detail artefak, RAM/VRAM, dan handoff M7 ada di TASKS.md.
-
-Jev membaca `SURPLUS_API_KEY`, `SURPLUS_API_URL`, dan `JEV_MODEL_ID` dari environment atau `.env`. Pengguna memilih `jev-1.14` pada pilot ini; jangan mengubahnya diam-diam ke 1.13 atau rolling alias. `python -m rag.evaluation.decisions --config <config> --pairs <file> --limit 12` membandingkan Jev/MiniCheck tanpa generation. Cache miss memerlukan `--allow-api`, batas batch keras, tanpa retry otomatis; tetap gunakan Python `.venv` langsung. Tidak ada dependensi baru atau perubahan skema/sitasi.
-
-Perintah M2 (lokal, memakai corpus hasil M1):
-
-```bash
-python -m uv run python -m rag.parsing --config configs/config.yaml
-python -m uv run python -m rag.chunking --config configs/config.yaml
-```
-
-Gunakan `--paper-id` untuk satu paper. Kedua perintah sudah diuji dengan config lokal terpisah pada PDF 16 halaman. `n_tokens` M2 memakai token leksikal, bukan tokenizer model; M3 wajib memeriksa batas embedding. Perubahan hasil parsing/chunking lama ditolak tanpa penghapusan otomatis. Alasan kegagalan berada di laporan run dalam `paths.parsed_dir/reports/`.
-
-Perintah M3 (seluruh tabel chunk; penggunaan pertama mengunduh bobot model):
-
-```bash
-python -m uv run python -m rag.indexing --config configs/config.yaml
-```
-
-Sudah diuji pada CPU dengan config `data/m3-smoke/config.yaml`: 21 chunk = 21 vektor = 21 FTS5; pengulangan offline memakai cache tanpa encoding baru. Laporan ada di `paths.index_dir/reports/`. Input melebihi batas tokenizer model ditolak tanpa truncation; gunakan database baru untuk chunk lebih kecil. Indexing dijalankan serial. M3 sudah ditutup; handoff ada di TASKS.md.
-
-PyTorch `2.15.0+cu132` dipasang manual oleh pengguna. CUDA dan operasi tensor GPU sudah diverifikasi pada RTX 3060 Ti; 186 test lulus. Embedding nyata masih diuji pada CPU dan default config tetap CPU. Lockfile belum disesuaikan dengan sumber CUDA. Untuk mempertahankan environment saat ini, gunakan `.venv/Scripts/python.exe` langsung untuk test/pipeline; jangan menjalankan `uv sync`/`uv run` yang menyinkronkan environment sebelum sumber/lock CUDA dirapikan. Uji embedding GPU berikutnya harus memakai cache baru agar tidak hanya membaca embedding CPU.
-
-Jalankan test dan lint setelah setiap perubahan kode, sebelum menyatakan tugas selesai.
+Snapshot/parser baru memakai database/index/run baru. Jangan memasangkan laporan bibliografi S3 dengan subset Docling.
+Jangan memakai chunker PyMuPDF pada artefak Docling. OCR tanpa pembanding native dan tabel ambigu tetap ditahan.
+Tidak wajib mengoreksi manual seluruh paper. Native Indonesia diuji terbatas; scan asli sudah diekstrak tetapi belum searchable. UI katalog/label
+diuji AppTest; retrieval dan generation KB penuh sudah diuji pada pilot acuan AI terbatas.
+Akurasi manusia/kesiapan umum belum dibuktikan; MiniCheck menunjukkan kandidat false negative.
+`prepare-local` default maksimal tiga PDF; batch lokal memakai `--max-documents` eksplisit dan batas config.
+Jalur default tetap memerlukan bukti identitas/lisensi berhash. `--local-collection` hanya untuk
+koleksi pengguna dengan policy manifest eksplisit; status unverified disimpan, bukan diklaim OA.
+Tidak mengunduh PDF. Lisensi dataset bukan lisensi artikel.
+Bukti terbaru: TASKS-SKRIPSI.md bagian refinement retrieval, pilot generation KB penuh,
+dan diagnosis verifier offline; belum ada transformasi verifier dipromosikan;
+rincian run tidak disalin di sini.
 
 ## 3. Struktur repo
 
-Struktur final dan peta modul ada di `ARCHITECTURE.md` §2. Ringkasnya:
-
-```
-src/rag/           ingestion, parsing, chunking, indexing, retrieval, generation, verification, evaluation, ui
-eval/              dataset uji, skrip evaluasi, hasil
-data/              korpus dan indeks (TIDAK di-commit)
-configs/           config.yaml dan variasi eksperimen
-tests/
-```
+`src/rag/`: ingestion, parsing, chunking, indexing, retrieval, generation, verification, evaluation, ui.
+`configs/`: konfigurasi; `tests/`: test; `eval/`: dataset/laporan evaluasi; `data/`: korpus/cache lokal, tidak di-commit.
 
 ## 4. Aturan inti (invarian proyek)
 
-Aturan ini adalah inti proyek. Jangan dilanggar tanpa persetujuan eksplisit.
-
-1. **Grounding ketat.** LLM hanya boleh menjawab dari chunk yang diambil. Jangan menambahkan pengetahuan dari luar konteks ke prompt jawaban.
-2. **Setiap klaim wajib punya sitasi** berupa ID chunk yang valid. Klaim tanpa bukti harus dikeluarkan atau dilabeli "tidak ada bukti". Jangan pernah mengarang ID, judul, atau halaman.
-3. **Format sitasi dan skema data bersifat tetap.** Jangan ubah tanpa bertanya, karena memengaruhi evaluasi.
-4. **Evaluasi harus bisa direproduksi.** Simpan seed, versi model, dan config tiap eksperimen. Jangan menimpa hasil lama; simpan dengan nama run baru.
-5. **Jangan memodifikasi dataset uji (`eval/`) agar hasil terlihat lebih baik.** Perubahan dataset harus eksplisit dan dicatat.
+1. Grounding ketat: jawaban hanya dari chunk hasil retrieval; jangan memasukkan pengetahuan luar ke konteks jawaban.
+2. Setiap klaim wajib bersitasi ID chunk valid; tanpa bukti harus dikeluarkan atau dilabeli "tidak ada bukti".
+3. Skema SQL dan format ID/sitasi tetap. Jangan mengubahnya tanpa persetujuan eksplisit.
+4. Simpan seed, model/revision, config/hash, dan run baru; jangan menimpa hasil lama.
+5. Jangan mengubah dataset/label agar skor membaik. Kesamaan string ID tidak memindahkan label ke snapshot baru.
 
 ## 5. Data dan lisensi
 
-- Hanya paper open access. Simpan lisensi dan sumber di metadata setiap paper.
-- **Jangan commit** PDF, teks penuh paper, indeks, atau isi `data/`. Cukup simpan ID/URL dan skrip untuk mengunduh ulang.
-- Jangan menambah sumber data baru tanpa memastikan lisensinya.
+- Simpan identitas, versi/hash, sumber, dan lisensi setiap PDF; akses publik saja bukan bukti lisensi.
+- Jangan commit PDF, full text/abstrak korpus, indeks, atau isi `data/`.
+- Jangan mengunduh PDF tambahan: pengguna menyiapkannya sendiri. Inventaris sebelum ingestion batch.
+- Pilot downloader lama memakai 26/30 request dan seluruh lima slot PDF; sisa request bukan izin PDF/batch baru.
 
 ## 6. Secret dan biaya API
 
-- API key hanya dari environment variable (`.env`, sudah di-gitignore). Jangan hardcode, jangan cetak ke log, jangan commit.
-- Perbarui `.env.example` bila menambah variabel baru (tanpa nilai asli).
-- **Test tidak boleh memanggil API berbayar.** Gunakan mock atau fixture.
-- Panggilan LLM nyata hanya dijalankan lewat skrip evaluasi atau perintah eksplisit. Cache respons dan embedding. Catat penggunaan token.
-- Jangan membuat loop panggilan API tanpa batas; selalu beri batas jumlah panggilan.
+- Key hanya dari environment/`.env`; jangan hardcode, mencetak, atau commit. Perbarui `.env.example` jika menambah variabel.
+- Test memakai mock/fixture, tanpa API berbayar. Default generation/judge hanya cache; cache miss bukan abstention.
+- Request nyata harus eksplisit, berizin, dan berbatas jumlah panggilan/token; hitung kegagalan dan retry format dalam jatah.
+- Batch M6/S5 sudah selesai. Jangan mengulang fase berbayar, mereset ledger/marker, atau menganggap sisa jatah sebagai izin baru.
+- Setelah crash, periksa receipt/cache dan replay tanpa API dahulu. JEV harus tetap versi eksplisit `jev-1.14`.
 
 ## 7. Konvensi kode
 
-- Python 3.11+, type hints pada fungsi publik.
-- Formatter dan linter: `ruff` (konfigurasi di `pyproject.toml`: line-length 100, target py311).
-- Logging dengan modul `logging`, bukan `print`.
-- Parameter yang bisa dieksperimenkan (ukuran chunk, bobot RRF, top-k, model) masuk ke config, bukan di-hardcode.
-- Fungsi kecil dan bisa diuji. Pisahkan logika dari I/O (jaringan, disk, GPU).
-- Komentar menjelaskan *kenapa*, bukan *apa*.
+Python 3.11+, type hints fungsi publik, fungsi kecil, logika terpisah dari I/O. Gunakan `logging`, bukan `print`.
+Parameter eksperimen masuk config; Ruff memakai 100 kolom/py311. Komentar menjelaskan alasan, bukan mengulang kode.
 
 ## 8. Dependensi
 
-- Jangan menambah dependensi baru tanpa konfirmasi. Jelaskan alasan dan alternatifnya.
-- Kunci versi di file lock. Jangan mengganti versi mayor library tanpa bertanya.
+Jangan menambah dependensi/sumber data atau mengganti versi mayor tanpa konfirmasi. Kunci versi pada lockfile yang tepat.
 
 ## 9. Testing
 
-- Test unit untuk chunking, fusion (RRF), parsing format klaim-sitasi, dan validasi ID chunk.
-- Mock LLM, embedding, dan jaringan.
-- Test yang membutuhkan GPU diberi marker `gpu` agar bisa dilewati.
-- Bug yang diperbaiki sebaiknya disertai test yang mereproduksinya.
+Test chunking, fusion, klaim/sitasi, dan ID; mock model/jaringan. Test GPU memakai marker `gpu`.
+Bug sebaiknya mempunyai test reproduksi. Setelah perubahan kode, jalankan pytest serta Ruff lint/format.
 
 ## 10. Kapan harus bertanya dulu
 
-Berhenti dan tanyakan sebelum:
-- mengubah skema data, format sitasi, atau struktur folder utama;
-- menambah dependensi atau sumber data baru;
-- menghapus file, data, atau hasil eksperimen;
-- menjalankan perintah yang memanggil API berbayar dalam jumlah besar atau memakan waktu lama;
-- melakukan refactor besar di luar lingkup tugas.
-
-Jika instruksi ambigu, nyatakan asumsimu secara singkat, lalu lanjutkan dengan pilihan paling konservatif.
+Minta persetujuan sebelum mengubah skema/ID/sitasi/struktur folder utama, menambah dependensi/sumber data,
+menghapus atau memindahkan file/data/hasil, batch API berbayar atau proses lama, dan refactor besar di luar tugas.
+Untuk penghapusan/pemindahan, ajukan daftar file konkret dahulu. Jika ambigu, nyatakan asumsi konservatif.
 
 ## 11. Alur kerja
 
-- Kerjakan satu tugas kecil pada satu waktu. Hindari perubahan di luar lingkup tugas.
-- Baca kode terkait dan dokumen desain sebelum menulis.
-- Pesan commit singkat dan deskriptif (misal `retrieval: add RRF fusion`).
-- Jika keputusan desain berubah, perbarui `DESIGN.md` pada perubahan yang sama.
+Kerjakan satu tugas kecil; baca caller, config, test, dan dokumen terkait sebelum menulis. Pertahankan perubahan pengguna.
+Hindari cleanup di luar scope. Perbarui DESIGN.md hanya bila keputusan visual berubah; pesan commit singkat/deskriptif.
 
 ## 12. Definisi selesai
 
-Tugas dianggap selesai bila:
-- [ ] Perilaku yang diminta berfungsi dan diuji.
-- [ ] `pytest -q` lulus.
-- [ ] `ruff check .` dan format bersih.
-- [ ] Tidak ada secret, data korpus, atau file besar yang ikut ter-commit.
-- [ ] `DESIGN.md` / `README.md` diperbarui bila perlu.
-- [ ] Ringkasan perubahan, asumsi, dan hal yang belum teruji dinyatakan jujur.
-
-Jangan menyatakan "sudah berjalan" jika belum dijalankan. Katakan apa yang sudah dan belum diverifikasi.
+Perilaku diuji sesuai scope; setelah perubahan kode pytest dan Ruff lulus. Tidak ada secret/korpus/file besar ikut commit.
+Perbarui dokumentasi yang relevan. Nyatakan apa yang dijalankan, belum diuji, dan batas hasil; jangan mengklaim sukses tanpa bukti.
+Agreement antarmodel/review AI bukan akurasi manusia. Label manusia M6 satu paper dan audit acuan S5 bukan label klaim generation baru.
+Acuan 018 revisi yang diterima tetap terpisah dari acuan/dataset/skor S5 lama; audit kecil sudah ditutup.
