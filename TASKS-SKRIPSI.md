@@ -1424,6 +1424,290 @@ Pemakaian model berbayar lain memerlukan izin baru. Gate antislop DURING PASS:
 angka dari artefak dengan batas AI; UI/aset tidak berubah. Antislop-code PASS:
 komentar/kode produksi tidak disentuh.
 
+## Kebijakan pelaporan verifier dan rancangan uji independen (2026-11-21)
+
+Kelanjutan agenda setelah diagnosis offline. Kebijakan kini tertulis pada
+ARCHITECTURE.md bagian kebijakan pelaporan verifier dan USAGE.md bagian S4.
+Implementasi `support_label` sudah sesuai, sehingga kode produksi/UI tidak diubah.
+Status mesin, validitas sitasi, dan audit sumber dibedakan; `not_supported` bukan
+vonis fakta salah. Judge/manual tidak menimpa ringkasan MiniCheck. Label error atau
+hasil hilang tetap unknown, kecuali ada penolakan/partial yang perlu diperiksa.
+Klaim unsupported/tanpa sitasi tetap "Tidak ada bukti". Denominator ringkasan UI
+(semua sitasi) dibedakan dari citation recall/faithfulness (sedikitnya satu sitasi).
+Enam kasus regresi tambahan menguji prioritas status dan isolasi hasil antarverifier/klaim.
+
+### Rancangan uji independen, belum menjadi dataset
+
+Tujuan: mengukur dukungan pasangan kanonis terhadap penilaian manusia pada sampel
+baru, sebelum mempertimbangkan promosi model/transformasi. Tidak perlu generation
+atau API baru untuk menyiapkan pasangan. Rancangan ini tidak menambah dataset/label,
+tidak memberi izin batch berbayar, dan tidak menetapkan MiniCheck sebagai akurat.
+Penambahan dataset memerlukan persetujuan eksplisit sesuai AGENTS.md bagian 8/10.
+
+1. Pakai snapshot KB penuh `kb-local-all/2026-11-20T01-59-17Z_c95c3b` tanpa
+   mengubah chunk. Target awal: 12 unit bukti baru pada minimal enam paper,
+   enam narasi/enam tabel. Keluarkan unit yang sudah digunakan pada development,
+   validasi refinement, dan diagnosis; simpan daftar pengecualian beserta alasannya.
+   Bila target tidak tersedia, laporkan kekurangan sebelum scoring; jangan mengganti
+   unit setelah melihat prediksi. Sampel ini tetap terbatas, bukan representasi semua korpus.
+2. Setiap unit memiliki satu klaim Indonesia dan satu Inggris serta satu kontrol
+   salah per bahasa: target 48 pasangan. Kontrol mengubah satu angka/relasi/atribusi
+   dengan konteks lengkap; pemeriksa manusia menentukan labelnya, bukan pembuat kontrol.
+   Pasangan bahasa dan kontrol satu unit berkorelasi; laporkan 12 unit, bukan 48 unit independen.
+3. Simpan pasangan/kutipan hanya pada run baru di `data/`. Bekukan teks klaim, chunk ID,
+   hash teks/PDF, halaman, bahasa, jenis bukti, unit kelompok, provenance AI/manusia,
+   seed 42, urutan, config, model/revision/threshold, dan hash dataset sebelum scoring.
+   Gunakan format anotasi yang ada (`claim`, `chunk_id`, `text_sha256`, `label`,
+   `annotator`), dengan label/annotator awal null. Catat field tambahan di manifest
+   pendamping; tidak perlu mengubah skema SQL, ID, atau format sitasi.
+4. Acak paket anotasi tanpa prediksi/skor atau penanda kontrol. Manusia menilai
+   seluruh isi klaim terhadap satu chunk: supported, partially_supported, atau
+   not_supported. Bukti tambahan dari halaman asli boleh membantu audit parsing,
+   tetapi tidak melengkapi dukungan yang tidak ada di chunk. Masalah parsing/ambigu
+   dicatat terpisah; pasangan tak terselesaikan tidak diberi label tebakan.
+   Simpan label pada versi baru, sebelum membuka skor; label AI tetap bukan gold manusia.
+5. Nilai baseline kanonis lokal dengan revision/threshold tetap pada run baru.
+   Laporkan coverage/error/overlength, matriks tiga label manusia versus keluaran model,
+   jumlah dukungan salah (manusia partial/not_supported, model supported), penolakan
+   salah (manusia supported, model not_supported), precision/recall dukungan dan
+   agreement/kappa. Denominator nol atau kappa tak terdefinisi tetap null.
+   Pisahkan hasil per bahasa, narasi/tabel, klaim/kontrol, serta jumlah unit/paper;
+   partial tidak digabung menjadi supported. Hasil unverified tidak dihitung sebagai penolakan.
+6. Kandidat transformasi/model memerlukan kebijakan beku sebelum melihat skor baru
+   dan penilaian pada pasangan sama, dengan label asal tetap. Sampel yang dipakai
+   menyetel kandidat berubah menjadi development; klaim perbaikan perlu set baru.
+   Replay harus identik tanpa API/inference baru. Uji ini tidak mengukur retrieval,
+   abstention generation, atau kesiapan jawaban umum. Tidak ada promosi otomatis
+   dari agreement AI, skor view terbaik, atau hasil sampel kecil ini.
+
+Status: kebijakan tertulis dan rancangan siap ditinjau; dataset independen, anotasi
+manusia, scoring baru, serta promosi model/default belum dikerjakan.
+Verifikasi sesi ini: `python -m pytest -q` dari `.venv` menghasilkan **573 passed,
+1 skipped** (modul RAGAS); Ruff lint dan format bersih (122 file), `git diff --check`
+bersih. Tidak menjalankan model/API, scoring dataset, atau suite Docling isolated;
+parser tidak berubah. Diff terbatas empat dokumen dan `tests/test_ui.py`, tanpa
+korpus/secret/data baru. Pemeriksaan bukti/provenance PASS: aturan dicocokkan dengan
+kode dan test; target 48 pasangan dinyatakan sebagai rencana, bukan hasil.
+Gate visual tidak berlaku karena source UI, layout, dan aset tidak diubah.
+
+## Paket anotasi verifier independen disiapkan (2026-11-21)
+
+Pengguna menyetujui pembuatan dataset/paket anotasi dengan “gas kerjakan aja!”.
+Persetujuan ini tidak menambah izin API berbayar. Paket final berada di
+`data/skripsi/verifier-independent/2026-11-21T07-18-43Z_6b031a/`.
+
+- 12 unit dari 12 paper: enam narasi/enam tabel, 48 pasangan klaim Indonesia/Inggris
+  dan kontrol. Semua label/annotator awal null; niat pembuat kontrol bukan gold.
+- Pemisahan lebih konservatif dari unit: seluruh 19 paper target development,
+  validasi refinement, dan diagnosis dikeluarkan. Daftar/alasan/hash input ada di
+  `maintainer/exclusions.json`. Ini bukan jaminan paper belum pernah muncul sebagai
+  distractor retrieval atau diperiksa dalam audit korpus historis.
+- Sampel purposif, bukan random sampling korpus. Seed 42 mengacak urutan anotasi.
+  Bukti kanonis semuanya berbahasa Inggris; klaim ID/EN tidak menguji evidence
+  native Indonesia. Empat pasangan satu unit berkorelasi, bukan 48 unit independen.
+- Hash klaim/evidence/PDF/config, halaman, model/revision/threshold, provenance AI,
+  metadata kelompok dan urutan dibekukan sebelum scoring. Kutipan tidak diubah.
+  Anchor native lolos untuk 12 unit; enam halaman tabel ditinjau visual oleh AI.
+  Ini audit persiapan, bukan anotasi manusia atau bukti akurasi verifier.
+- `reviewer/annotations.csv` dan `annotations.jsonl` tidak memuat skor, prediksi,
+  niat kontrol atau ID kelompok. `evidence.md` untuk membaca; `README.txt` untuk
+  instruksi label. Penilai hanya menerima folder reviewer; file maintainer/specs
+  tidak dibuka sebelum label selesai. Relasi bilingual/kontrol membatasi blinding.
+- `prepare.py check` memeriksa freeze, sumber dan 836 hash terlindungi. Import CSV
+  menolak perubahan klaim/bukti/halaman, ID ganda, label kosong/invalid atau tanpa
+  annotator. Label manusia yang diberikan disimpan pada versi baru, memakai loader
+  anotasi yang sudah ada. Catatan parsing/ambigu tidak diubah menjadi label tebakan.
+
+Persiapan pertama `2026-11-21T07-14-17Z_9efc2c` tetap disimpan. Run final memakai
+script yang dirapikan panjang barisnya; hash dataset, evidence dan urutan identik.
+Tidak ada scoring/inference/generation/API baru, perubahan runtime/default,
+SQL/ID/sitasi/model/threshold, dependensi/PDF baru, atau penghapusan/pemindahan.
+Sebelas test guard lokal dan 573 test utama lulus; satu modul RAGAS dilewati.
+Ruff lint/format repo (122 file) serta dua script final bersih; diff check bersih.
+Verifikasi akhir dan batas tercatat pada `summary.md`/`verification.json` di run
+final. Suite parser isolated tidak diulang karena parser tidak berubah.
+Berkas kutipan/paket tetap di `data/`
+yang diabaikan Git; perubahan pengguna sebelumnya dipertahankan.
+
+Status: paket siap dinilai manusia. Berikutnya pengguna/penilai mengisi salinan
+CSV, mengembalikan path, lalu validasi/import label dan scoring baseline lokal pada
+run baru. Tidak ada gold manusia atau hasil evaluasi baru sampai tahap itu selesai.
+
+## Evaluasi verifier seluruhnya oleh AI, 2026-11-21
+
+Pengguna meminta seluruh penilaian diserahkan ke AI, lalu memberi izin “GAS BOLEH!”
+untuk Surplus GPT: maksimal 60 request/1.024 output token per request, tanpa retry
+otomatis. Ini mengubah prasyarat anotasi manusia untuk run AI baru saja; paket
+manusia tetap utuh/null, tidak diubah menjadi gold AI atau ditimpa. Run final:
+`data/skripsi/verifier-ai-evaluation/2026-11-21T07-34-32Z_0e9735/`.
+
+Rencana/konfigurasi/prompt/kode dibekukan sebelum scoring. Dataset tetap 48 pasangan
+dari 12 unit/12 paper; GPT awal hanya menerima claim/evidence, tanpa penanda kontrol
+atau hasil MiniCheck. Model lingkungan yang dibekukan `gpt-4o-mini` lewat Surplus;
+48 request awal dan maksimal 12 audit pada konflik pertama dalam urutan beku.
+Audit memakai model sama dengan prompt teliti, bukan pemeriksa independen ketiga.
+Backend mencatat reservation sebelum request, menghitung kegagalan dalam budget,
+menolak model/usage/prompt melampaui batas, tanpa retry/redirect. Marker mencegah
+pengulangan fase berbayar; recovery hanya inspeksi receipt/cache dan replay dahulu.
+
+**Hasil:** coverage GPT/MiniCheck 48/48. GPT awal 30 supported/4 partial/14 rejected;
+MiniCheck 19 supported/29 rejected. Agreement **29/48 (60,42%)**, kappa **0,3133**.
+Matriks GPT supported/partial/rejected versus MiniCheck supported/rejected:
+`[[17,13],[0,4],[2,12]]`. Precision/recall dukungan relatif GPT **17/19 = 0,8947**
+dan **17/30 = 0,5667**, bukan akurasi manusia. Indonesia agreement 11/24, Inggris
+18/24; narasi 15/24, tabel 14/24. Label pasangan bahasa berbeda pada 9/24 kelompok
+MiniCheck dan 2/24 GPT; terjemahan AI belum menjadi acuan manusia.
+
+Ada 19 konflik; 12 diaudit GPT sesuai policy, **12/12 label tidak berubah**. Tujuh
+konflik tidak mendapat audit berbayar tambahan. Audit sumber AI menemukan kandidat
+salah kolom/negasi pada kontrol yang diterima GPT dan/atau MiniCheck; keduanya
+bersama menerima dua kontrol bermasalah (item-020/item-030). Audit konflik saja
+tidak mendeteksi seluruh shared error. Rincian halaman/hash/angka/rationale ada
+di `source-review.md` dan `per-pair.json`, bukan label/gold manusia.
+
+**Aktual:** seluruh **60/60 request**, **17.358 input/3.178 output token**, output
+tertinggi 108/request, nol retry/gagal/usage hilang. Model respons gpt-4o-mini;
+biaya mata uang unknown. Budget batch sudah habis. Tidak memakai JEV/generator.
+MiniCheck pinned/threshold tetap menghitung 48 pasangan lokal, 72–327/512 token,
+tanpa truncation/overlength; warning bobot tetap dicatat tanpa perubahan loader.
+Replay identik: 48+12 cache GPT dan 48 cache MiniCheck, nol request/inference baru.
+
+860 hash terlindungi tetap, termasuk paket manusia lama. 573 test utama + delapan
+test guard lokal lulus; satu modul RAGAS dilewati; Ruff repo/script final dan
+diff check bersih. Parser isolated tidak diulang. Tidak mengubah SQL/ID/sitasi,
+KB/UI/default/model/threshold/label lama, dependensi/PDF atau melakukan cleanup.
+Artefak/kutipan tetap di data/ yang diabaikan Git; perubahan pengguna dipertahankan.
+
+**Keputusan:** evaluasi AI otomatis selesai tanpa perlu input anotasi pengguna.
+GPT belum dapat dipromosikan sebagai gold atau pengganti verifier berdasarkan
+agreement ini. Pertahankan status mesin dan audit sumber terpisah; human accuracy
+tetap null. Tidak ada promosi atau batch paid lanjutan otomatis. Kebutuhan berikut
+adalah perbaikan terukur pada negasi/angka/header dan validasi baru sebelum promosi;
+dataset yang sudah dilihat ini kini menjadi bahan diagnosis, bukan holdout baru.
+
+## Integrasi produk: KB penuh sebagai UI utama, 2026-11-21
+
+Pengguna meminta kembali ke tujuan RAG referensi skripsi, lalu menyetujui koneksi
+KB penuh ke UI, pengujian alur nyata sampai halaman sumber, status verifier yang
+transparan, dan perbaikan hambatan penggunaan. Tidak menjalankan eksperimen judge
+lanjutan atau batch generation berbayar baru.
+
+**Perubahan produk:**
+
+- Tanpa argumen CLI, UI langsung memilih **Referensi skripsi lengkap (41 PDF)**
+  dan **Tanya korpus**, memakai `configs/skripsi-local.yaml`. Pemilih juga memuat
+  pilot lima PDF dan benchmark historis dengan config/receipt/demo yang cocok.
+  Identitas korpus berubah mereset jawaban dan izin API. `--config` eksplisit tetap
+  dihormati; CLI parser/evaluasi dan format config inti tidak diubah.
+- Snapshot UI baru `data/skripsi/ui-local/2026-11-21T08-16-45Z_07d296/` menyalin
+  database pilot generation KB penuh: 41 paper/40 searchable/2.514 chunk dan
+  delapan jawaban tersimpan. Vektor/FTS/chunk tetap KB penuh, alias dibatasi hash
+  admission receipt. Manifest merekam sumber/hash; database hasil lama tidak ditulis.
+- Delapan contoh pilot bisa dibaca tanpa API/inference, termasuk status MiniCheck
+  asli dan kontrol nol klaim. Konteks contoh berasal dari refinement pilot yang
+  dibekukan, bukan retrieval ulang form UI. Retrieval runtime tetap empat mode
+  produksi; default hybrid mengikuti config, helper refinement belum dipromosikan.
+- Saat cache generation kosong, kutipan retrieval tetap dapat dibaca sebagai
+  **Bukti hasil pencarian**; tidak diklaim menjadi jawaban terverifikasi. Untuk
+  jawaban baru tetap perlu checkbox API, maksimal dua request per submit.
+- Sitasi dan bukti pencarian mempunyai **Lihat halaman PDF asli** dan **Unduh PDF
+  sumber**. Pembaca hanya memakai raw/pdf dengan nama paper kanonis, memeriksa
+  SHA-256 terhadap SQL, dan merender nomor halaman asli. PDF tidak dikirim ke
+  pihak luar atau diunduh dari internet. Tidak menambah dependensi/skema/sitasi.
+- Label verifier tetap penanda mesin, bukan vonis fakta; pesan nol klaim kini
+  dibatasi konteks terambil, tidak menyatakan seluruh korpus tidak punya bukti.
+
+**Pengujian penggunaan:** AppTest pada KB nyata membuka katalog/Parasuraman held,
+mengirim pertanyaan BM25, membaca bukti saat cache miss, menampilkan PDF dan kontrol
+unduh, membuka seluruh delapan contoh, serta berpindah korpus dan mereset izin.
+Ketiga profil diperiksa; contoh benchmark juga dibuka. Uji hybrid lokal nyata
+mengembalikan delapan chunk dengan nol API; database sumber identik sebelum/sesudah.
+Server berjalan di 127.0.0.1:8501 dengan health ok. Peluncuran Edge headless untuk
+browser test ditolak kebijakan alat; tidak mencoba bypass. Interaksi diuji melalui
+AppTest, bukan klaim pemeriksaan visual browser/mobile baru. Desain/CSS tetap.
+
+576 test utama lulus/1 modul RAGAS dilewati; Ruff lint/format 122 file dan diff
+check bersih. Tiga test baru mencakup pilihan default/pergantian korpus, preview
+PDF hash/halaman/tampering, dan bukti retrieval saat cache miss. Suite parser
+isolated tidak diulang. Tidak ada API berbayar, parser ulang, PDF/dependensi baru,
+penghapusan/pemindahan atau perubahan label/model/threshold. Bukti lokal ada di
+manifest/app-test/profiles-check/hybrid-smoke dan summary folder UI baru.
+
+**Status:** integrasi RAG KB penuh ke UI selesai dan dapat digunakan. Jawaban baru
+berbayar belum diuji ulang sesi ini; jalur paid mock/regresi tetap lulus. Akurasi
+umum/retrieval semua jenis pertanyaan belum dibuktikan. Agenda berikut mengikuti
+masalah penggunaan nyata; eksperimen verifier tambahan tidak menjadi prasyarat
+penggunaan RAG. Parasuraman held dan tiga TXT belum berpeta halaman tetap terbuka.
+
+## Jawaban KB dengan evaluasi RAGAS opsional, 2026-11-21
+
+Perubahan arah produk yang disetujui pengguna sudah diterapkan: jawaban bersitasi
+tampil dahulu; tombol **Evaluasi kualitas** menghitung Faithfulness dan Response
+Relevancy. MiniCheck dipindahkan ke diagnostik opsional dan tidak otomatis berjalan
+pada query baru. Context Recall tetap batch dengan acuan. Sumber tetap KB saat ini;
+tidak ada perubahan skema, ID/sitasi, model, threshold, label, atau dependensi.
+
+Evaluator S5 isolated menggunakan judge/cache/batas yang sudah ada dan embedding lokal
+offline melalui environment utama. Izin API evaluasi terpisah, default mati, maksimal
+lima request/1.024 token output per request. Seluruh konteks generation termasuk yang
+tidak disitasi dibekukan bersama hash sumber/input/config, seed, model/library/backend,
+traces dan usage pada run baru `paths.cache_dir/answer-quality/`. Jawaban tampilan
+dicocokkan dengan sumber kanonis. Kegagalan/cache miss menghasilkan null, bukan nol;
+hasil/izin evaluasi direset ketika jawaban atau korpus berubah.
+
+Setelah listrik padam, perubahan tersimpan diperiksa dan suite dijalankan ulang:
+**590 test utama lulus, satu modul RAGAS dilewati; 13 test adapter RAGAS isolated
+lulus; Ruff lint/format bersih**. Test mencakup konteks tidak disitasi, input/source
+tampering, subprocess/timeout, cache-only, relevancy negatif, replay, pemisahan izin,
+reset hasil, kegagalan evaluasi yang mempertahankan jawaban, dan isolasi MiniCheck.
+Provider pada test dimock. Tidak ada request API berbayar baru pada implementasi ini.
+Smoke AppTest KB penuh membuka jawaban tersimpan, menjalankan worker RAGAS asli
+tanpa izin API, mempertahankan jawaban ketika skor null/cache miss, serta membuka
+preview/unduhan PDF. Bridge embedding offline nyata menghasilkan vektor 768 dimensi
+ternormalisasi; hash database sumber identik sebelum/sesudah. Bukti lokal:
+`data/skripsi/ui-local/2026-11-21T08-16-45Z_07d296/quality-smoke.json`.
+Server Streamlit dipulihkan di 127.0.0.1:8501, health ok. Pemeriksaan interaksi
+memakai AppTest; pemeriksaan visual browser/mobile tidak diulang. Desain/CSS tetap.
+Suite parser isolated tidak diulang. Skor AI bukan akurasi manusia; evaluasi API nyata
+untuk fitur baru belum dijalankan dan tidak memakai ulang jatah batch sebelumnya.
+
+## Audit cleanup finishing, 2026-11-21
+
+Logger yang tidak dipakai pada evaluator kualitas dihapus. README diringkas dan
+diselaraskan dengan KB penuh, alur jawaban/RAGAS/MiniCheck opsional, izin API,
+dan batas hasil saat ini. OVERVIEW menandai rancangan awal agar tidak disalahartikan
+sebagai status runtime. Tautan lokal kedua dokumen diperiksa dan valid.
+
+Pemeriksaan referensi nama melalui AST pada source/test/script evaluasi tidak menemukan
+definisi top-level tanpa referensi; ini audit statis terbatas, bukan bukti seluruh
+kode diperlukan saat runtime. Modul historis tetap memiliki caller atau test dan
+tidak dihapus. Tes ulang: 590 utama/1 skipped, 13 adapter RAGAS isolated lulus;
+Ruff lint/format dan diff check bersih, nol API berbayar.
+
+Kandidat penghapusan terbatas pada 148 file cache pytest/Ruff dan bytecode di 13
+folder (2.036.731 byte), dirinci dalam
+`data/cleanup-audit/2026-11-21T09-56-21Z/candidates.md` dan `candidates.json`.
+Pengguna menyetujui penghapusan daftar konkret. Seluruh 148 file dalam daftar
+sudah tidak ada setelah penghapusan nonrekursif; folder cache kosong dibiarkan.
+Path absolut diperiksa berada dalam workspace dan bukan reparse point.
+Bukti pelaksanaan: `deletion-receipt.json` pada folder audit yang sama.
+Suite tidak diulang untuk penghapusan cache saja; hasil 590+13 di atas tetap
+hasil verifikasi kode terakhir. Cache/bytecode dapat dibuat ulang saat alat berjalan.
+Korpus, cache model/API, hasil eksperimen, environment, dan secret tidak masuk daftar.
+
+Pengguna kemudian menyetujui pembersihan script eksperimen yang diaudit. Sebanyak
+23 script lokal (150.098 byte) dihapus: 15 salinan source RAGAS untuk inspeksi,
+enam script QA UI pilot, `quality-smoke.py`, dan launcher `open-ui.ps1` lama.
+Daftar konkret dan receipt berada pada `script-candidates.md`/`.json` dan
+`script-deletion-receipt.json` dalam folder audit yang sama. Semua target
+terverifikasi tidak ada; penghapusan nonrekursif setelah validasi path dan ukuran.
+Script runtime, pembentukan KB/replay, serta hasil laporan tetap dipertahankan.
+Pemeriksaan QA lama tidak lagi dapat diulang persis dengan script yang dihapus.
+Sesudah penghapusan script, 590 test utama (satu modul skipped) dan 13 test RAGAS
+isolated lulus kembali; Ruff lint/format dan diff check bersih. Pengujian memakai
+`PYTHONDONTWRITEBYTECODE=1`, pytest tanpa cacheprovider, serta Ruff tanpa cache.
+Tidak ada API berbayar baru atau perubahan perilaku runtime.
+
 ## Ditunda
 
 - Sinkronisasi langsung akun Mendeley; cukup ekspor `.bib` dan PDF lokal dahulu.

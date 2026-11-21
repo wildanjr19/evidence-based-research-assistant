@@ -124,6 +124,34 @@ def test_support_requires_every_citation_and_ignores_judge(labels: list, expecte
 
 
 @pytest.mark.parametrize(
+    ("label", "expected"),
+    [
+        ("supported", "Belum diverifikasi"),
+        (None, "Belum diverifikasi"),
+        ("not_supported", "Perlu diperiksa"),
+        ("partially_supported", "Perlu diperiksa"),
+    ],
+)
+def test_support_missing_result_is_not_filled_by_other_verifiers_or_claims(
+    label: str | None, expected: str
+) -> None:
+    claim = dict(claim_id="c", citations=[FIRST, SECOND], unsupported=False)
+    records = [dict(claim_id="c", chunk_id=FIRST, verifier="minicheck", label=label)]
+    records.extend(
+        dict(claim_id=claim_id, chunk_id=SECOND, verifier=verifier, label="supported")
+        for claim_id, verifier in [("c", "llm_judge"), ("c", "manual"), ("other", "minicheck")]
+    )
+    assert service.support_label(claim, records) == expected
+
+
+@pytest.mark.parametrize("citations, unsupported", [([FIRST], True), ([], False)])
+def test_support_cannot_override_missing_claim_evidence(citations: list, unsupported: bool) -> None:
+    claim = dict(claim_id="c", citations=citations, unsupported=unsupported)
+    records = [dict(claim_id="c", chunk_id=FIRST, verifier="minicheck", label="supported")]
+    assert service.support_label(claim, records) == "Tidak ada bukti"
+
+
+@pytest.mark.parametrize(
     "url", [None, "javascript:alert(1)", "http://example.com", "https://u@host/", "https://[bad"]
 )
 def test_source_links_only_allow_https_without_credentials(url: str | None) -> None:
@@ -171,7 +199,7 @@ def test_query_verifies_cached_answer_and_preserves_unknown(
         "CachedVerifier",
         lambda selected: CachedVerifier(selected, FakeSupport([float("nan")])),
     )
-    answer = service.run_question("Alpha result?", config, "hybrid+rerank")
+    answer = service.run_question("Alpha result?", config, "hybrid+rerank", verify=True)
     assert answer["status"] == "ok"
     assert answer["verification"][0]["label"] is None
     assert (
@@ -183,6 +211,153 @@ def launch_app(demo_dir: str) -> None:
     from rag.ui.app import main
 
     main(demo_dir=demo_dir)
+
+
+def launch_default_app() -> None:
+    from rag.ui.app import main
+
+    main()
+
+
+def test_default_corpus_query_and_switch_reset_answer_and_permission(demo, monkeypatch):
+    config, directory, generation = demo
+    monkeypatch.setattr(
+        "rag.ui.app.CORPORA",
+        {
+            "Full corpus": ("full", str(directory), None),
+            "Pilot corpus": ("pilot", str(directory), None),
+        },
+    )
+    monkeypatch.setattr(
+        "rag.ui.app.load_config",
+        lambda path: (
+            config
+            if path == "full"
+            else replace(config, generation=replace(config.generation, model="different-model"))
+        ),
+    )
+    monkeypatch.setattr(
+        "rag.ui.app.run_question",
+        lambda *args, **kwargs: service.load_answer(config, generation["answer_id"]),
+    )
+    app = AppTest.from_function(launch_default_app).run()
+    assert not app.exception
+    assert app.selectbox[0].value == "Full corpus"
+    assert app.radio[0].value == "Tanya korpus"
+    app.text_area[0].set_value("Compare the evidence.")
+    app.checkbox[0].check()
+    app.button[0].click().run()
+    assert any("Klaim 1" in m.value for m in app.markdown)
+    app.selectbox[0].set_value("Pilot corpus").run()
+    assert not app.exception and app.checkbox[0].value is False
+    assert not any("Klaim 1" in m.value for m in app.markdown)
+
+
+def test_pdf_preview_uses_admitted_hash_and_original_page(corpus):
+    import pymupdf
+
+    from rag.ids import paper_file_stem
+    from test_generation import PAPER_ID
+
+    config, _ = corpus
+    directory = Path(config.paths.raw_dir) / "pdf"
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / (paper_file_stem(PAPER_ID) + ".pdf")
+    with pymupdf.open() as pdf:
+        pdf.new_page().insert_text((72, 72), "Original source page")
+        pdf.save(path)
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    with sqlite3.connect(config.paths.db_path) as connection:
+        connection.execute("UPDATE paper SET pdf_sha256=? WHERE paper_id=?", (digest, PAPER_ID))
+    preview = service.load_pdf_page(config, PAPER_ID, 1)
+    assert preview["image"].startswith(b"\x89PNG")
+    assert preview["pdf"] == path.read_bytes()
+    with pytest.raises(ValueError, match="Halaman"):
+        service.load_pdf_page(config, PAPER_ID, 2)
+    path.write_bytes(b"changed PDF")
+    with pytest.raises(ValueError, match="Hash"):
+        service.load_pdf_page(config, PAPER_ID, 1)
+
+
+def test_cache_miss_preserves_retrieved_evidence(corpus):
+    config, _ = corpus
+    answer = service.run_question("Alpha evidence", config, "bm25")
+    assert answer["status"] == "failed"
+    assert not answer["claims"]
+    assert answer["retrieved_chunks"][0]["chunk_id"] == FIRST
+    assert answer["usage"]["backend_calls"] == 0
+
+
+def test_query_skips_minicheck_until_requested(corpus, monkeypatch):
+    config, _ = corpus
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("MiniCheck is optional")
+
+    monkeypatch.setattr(service, "CachedVerifier", forbidden)
+    monkeypatch.setattr(
+        OpenAIBackend,
+        "complete",
+        lambda *args: completion([dict(text="Alpha supports the result.", citations=[FIRST])]),
+    )
+    answer = service.run_question("Alpha evidence", config, "bm25", allow_api=True)
+    assert answer["status"] == "ok" and answer["verification"] == []
+
+
+def test_quality_button_is_explicit_and_resets_for_another_answer(demo, monkeypatch):
+    calls = []
+
+    def evaluate(config, answer, *, allow_api=False):
+        calls.append((answer["answer_id"], allow_api))
+        return dict(status="evaluated", scores=dict(faithfulness=0.9, response_relevancy=0.8))
+
+    monkeypatch.setattr("rag.ui.app.evaluate_answer_quality", evaluate)
+    app = app_test(demo, monkeypatch)
+    app.selectbox[0].select(0).run()
+    assert not calls
+    app.button(key="evaluate_quality").click().run()
+    assert not app.exception and calls[-1][1] is False
+    assert [m.value for m in app.metric] == ["0.900", "0.800"]
+    app.run()
+    assert len(calls) == 1
+    app.checkbox(key="quality_api_permission").check()
+    app.button(key="evaluate_quality").click().run()
+    assert calls[-1][1] is True
+    app.selectbox[0].select(1).run()
+    assert not app.metric
+    app.selectbox[0].select(0).run()
+    assert app.checkbox(key="quality_api_permission").value is False
+    assert not app.metric
+
+
+def test_quality_failure_keeps_answer_and_unknown_scores(demo, monkeypatch):
+    def fail(*args, **kwargs):
+        raise RuntimeError("fixture evaluator failure")
+
+    monkeypatch.setattr("rag.ui.app.evaluate_answer_quality", fail)
+    app = app_test(demo, monkeypatch)
+    app.selectbox[0].select(0).run()
+    app.button(key="evaluate_quality").click().run()
+    assert not app.exception
+    assert all(m.value == "Belum tersedia" for m in app.metric)
+    assert any("<script>" in t.value for t in app.text)
+    assert any("belum lengkap" in warning.value for warning in app.warning)
+
+
+def test_optional_minicheck_does_not_write_source(corpus, monkeypatch):
+    config, rows = corpus
+    generation = service.generate_answer(
+        "Alpha?",
+        rows[:1],
+        config,
+        FakeLLM([completion([dict(text="Alpha supports the result.", citations=[FIRST])])]),
+    )
+    answer = service.load_answer(config, generation["answer_id"])
+    before = Path(config.paths.db_path).read_bytes()
+    monkeypatch.setattr(service, "CachedVerifier", lambda cfg: CachedVerifier(cfg, FakeSupport()))
+    records = service.run_diagnostics(config, answer)
+    assert records[0]["label"] == "supported"
+    assert Path(config.paths.db_path).read_bytes() == before
 
 
 def app_test(demo: tuple, monkeypatch: pytest.MonkeyPatch) -> AppTest:

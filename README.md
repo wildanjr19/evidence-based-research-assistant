@@ -6,86 +6,72 @@ Proyek ini memakai Retrieval-Augmented Generation (RAG): sistem mengambil potong
 
 ## Ruang lingkup
 
-Arah pengembangan aktif memakai **referensi skripsi pengguna dari Mendeley**.
-Impor BibTeX sudah tersedia; pengumpulan PDF dan korpus pilot dilacak di
-[TASKS-SKRIPSI.md](TASKS-SKRIPSI.md). Hanya dokumen open access berlisensi jelas
-yang boleh menjadi bukti. Sistem membantu menelusuri fakta, membandingkan
-temuan, dan menyintesis bukti lintas paper.
+Aplikasi menjawab pertanyaan dari **KB referensi skripsi pengguna**, dengan sitasi
+per klaim yang dapat dibuka sampai ke kutipan dan halaman PDF asli. Jawaban hanya
+memakai chunk hasil retrieval; klaim tanpa bukti diberi label yang sesuai.
 
-Benchmark MVP **RAG evaluation** dari arXiv tetap menjadi hasil historis yang
-terpisah. Target awal 100–500 paper belum tercapai dan tidak menjadi syarat
-jumlah referensi untuk korpus skripsi.
+KB aktif berisi **41 PDF terdaftar, 40 searchable, dan 2.514 chunk** dari koleksi
+lokal pengguna. Bibliografi turunan memuat 83 referensi; ekspor Mendeley sumber
+memuat 82 referensi. Satu PDF scan belum menghasilkan chunk yang lolos kualitas,
+dan tiga TXT belum berpeta halaman. Status sumber/lisensi dicatat sebagai label;
+koleksi ini tidak diklaim seluruhnya open access.
 
-Parsing, indexing, retrieval, dan verifikasi dirancang berjalan lokal; generasi jawaban memakai API LLM. PDF, teks penuh, indeks, dan cache tidak disimpan di Git.
+## Alur aplikasi
 
-## Alur sistem
+1. Pilih korpus dan tulis pertanyaan Indonesia atau Inggris.
+2. Retrieval mengambil bukti lokal; generator menyusun jawaban bersitasi.
+3. Buka sitasi untuk membaca kutipan, halaman PDF, dan lisensi sumber.
+4. Klik **Evaluasi kualitas** bila ingin menghitung Faithfulness dan Response
+   Relevancy RAGAS. MiniCheck tersedia sebagai diagnostik opsional.
 
-```text
-Paper open access -> Parsing PDF -> Chunking -> Embedding + indeks BM25
-                                                       |
-Pertanyaan -> Hybrid retrieval + rerank -> Jawaban bersitasi -> Verifikasi
-```
+Jawaban tampil sebelum evaluasi. Skor RAGAS adalah estimasi AI terhadap konteks
+atau relevansi, bukan jaminan kebenaran maupun ketepatan setiap sitasi. Context
+Recall tersedia pada evaluasi batch yang memiliki jawaban acuan. Evaluasi gagal
+atau cache miss ditampilkan sebagai belum tersedia, bukan skor nol.
 
-Stack utama: Python, PyMuPDF, BGE, LanceDB, SQLite FTS5, dan UI Streamlit. Rincian komponen dan keputusan desain ada di [ARCHITECTURE.md](ARCHITECTURE.md).
+Parsing dan indeks KB memakai snapshot Docling; retrieval memakai BGE, LanceDB,
+dan SQLite FTS5. UI memakai Streamlit, generator aktif DeepSeek Flash. RAGAS
+berjalan di environment terpisah, dengan embedding pertanyaan lokal. PDF, teks
+korpus, indeks, dan cache berada di `data/` dan tidak di-commit.
 
-## Status
+## Menjalankan aplikasi lokal
 
-**M0 sampai M7 selesai untuk benchmark awal:** ingestion, parsing, chunking, indexing, retrieval, generation bersitasi, MiniCheck lokal, judge generatif GPT-4o-mini melalui Surplus, dan UI demo Streamlit.
-
-**Korpus skripsi S0–S4 pilot:** scope ditetapkan dan impor offline membaca 83 entri
-menjadi 82 referensi berdasarkan DOI/metadata. Lima PDF pilot berlisensi sudah
-tersedia lokal (66 halaman), dengan 26/30 request jaringan dan replay tanpa
-request baru. Parsing/indexing lima PDF selesai: 310 chunk, 310 vektor, dan
-310 FTS; replay offline identik. Pencarian Indonesia/Inggris baru diuji dengan
-12 query draf AI, belum benchmark berlabel manusia. Tabel/section parser masih
-memiliki batas. UI skripsi tersedia dengan jumlah referensi/dokumen terindeks
-terpisah dan citation key asal pada sitasi. Retrieval/reranking CPU dan alur
-jawaban mock sudah direplay. S5 menambahkan RAGAS terpisah dan 20 pertanyaan
-draf AI; pilot nyata empat pertanyaan memakai 4 request DeepSeek dan 11 judge
-GPT-4o-mini, dengan replay identik tanpa request baru. Skor ini belum menjadi
-akurasi manusia. Audit kecil selesai: 9 acuan awal dan 1 revisi diterima;
-keputusan verifier masih terbuka.
-Evaluasi penuh S5, cakupan full text Indonesia, dan
-sisa koleksi masih terbuka; detail di [TASKS-SKRIPSI.md](TASKS-SKRIPSI.md).
-Panduan perintah impor ada di [USAGE.md](USAGE.md#impor-referensi-skripsi-s1).
-Perintah membuka korpus skripsi ada di
-[USAGE.md bagian S4](USAGE.md#tanya-korpus-skripsi-di-streamlit-s4).
-Panduan evaluasi otomatis ada di [USAGE.md bagian S5](USAGE.md#evaluasi-skripsi-dengan-ragas-s5).
-
-Dataset yang ditinjau pengguna berisi 30 pertanyaan lintas empat paper berlisensi, dengan 236 chunk. [Laporan M6](eval/results/2026-11-19T01-25-11Z_7492c6/m6-summary.md) memuat hasil, biaya estimasi, dan pengulangan dari cache. [Analisis kegagalan](eval/results/2026-11-19T01-25-11Z_7492c6/failure-analysis.md) membahas sitasi yang tidak didukung dan kontrol abstention. Label manusia 52 pasangan dari eksperimen satu paper dilaporkan terpisah; accuracy terhadap manusia pada klaim generation baru belum diukur. Target korpus 100–500 paper dan inference model di GPU masih tertunda. Catatan verifikasi dan handoff ada di [TASKS.md](TASKS.md).
-
-## Demo lokal
-
-UI menampilkan jawaban per klaim. Buka sitasi untuk membaca kutipan asli, ID chunk,
-halaman, section, dan lisensi, lalu buka tautan paper untuk memeriksa sumbernya.
-Label dukungan otomatis dibedakan dari klaim tanpa bukti dan klaim yang belum
-diverifikasi. Label tersebut bukan penilaian manusia.
-
-Dengan korpus dan config M6 lokal yang sesuai:
+Dari root repo, dengan environment dan data lokal yang sudah disiapkan:
 
 ```powershell
-.venv/Scripts/python.exe -m streamlit run src/rag/ui/app.py --server.address 127.0.0.1 -- --config data/m6-multipaper/20261119T004114Z/config-citations-surplus-gpt-authorized-v1.yaml
+.venv/Scripts/python.exe -m streamlit run src/rag/ui/app.py --server.address 127.0.0.1
 ```
 
-Mode **Demo tersimpan** membaca 30 jawaban M6 tanpa inference atau API baru.
-Mode **Tanya korpus** menjalankan retrieval/verifikasi lokal. Untuk pertanyaan
-baru, centang **Izinkan API berbayar saat cache kosong**, lalu klik **Cari bukti**.
-Generator memakai model dari config dan tetap hanya menjawab dari chunk lokal.
-Tanpa centang, UI hanya membaca cache LLM. Maksimum dua percobaan API per submit
-(atau batas config yang lebih kecil), termasuk satu koreksi format. Respons
-disimpan ke cache; percobaan API dan pemakaian token ditampilkan di UI.
-Cache miss tanpa izin ditampilkan sebagai kegagalan, bukan jawaban tanpa bukti.
-Database query dibuat sebagai salinan baru agar database benchmark tetap utuh.
-Petunjuk untuk korpus lain dan urutan demo ada di [USAGE.md](USAGE.md#ui-streamlit-dan-demo-lokal).
-PDF, database, dan cache perlu disiapkan lokal; clone repo saja belum cukup.
+Buka [localhost:8501](http://127.0.0.1:8501). Default memakai KB skripsi penuh
+melalui `configs/skripsi-local.yaml`. Mode **Demo tersimpan** menyediakan delapan
+jawaban pilot tanpa panggilan generator baru. Pilihan korpus juga menyediakan
+pilot lima PDF dan benchmark historis dengan config masing-masing.
 
-Pilot [Jev dibandingkan dengan MiniCheck](eval/results/2026-11-18T11-50-46Z_ad072b/report.md)
-memeriksa 12 pasangan kandidat klaim–chunk dari satu paper. Jev menjawab seluruh
-pasangan; MiniCheck memeriksa 10 dan menolak dua input yang melewati batas token.
-Keduanya sepakat pada 10 pasangan yang dapat dibandingkan. Laporan menyimpan
-probabilitas, confidence, identitas model, token, latensi, dan kegagalan secara
-terpisah. Hasil ini adalah agreement antar-model, belum akurasi terhadap manusia
-atau bukti bahwa salah satu verifier lebih unggul.
+Untuk membuat jawaban baru, centang izin API generator sebelum **Cari bukti**:
+maksimal dua request per submit, termasuk koreksi format. Izin API evaluasi
+terpisah dan default mati: maksimal lima request dengan 1.024 token output per
+request. Cache selalu diperiksa lebih dahulu. Pertanyaan, jawaban, atau konteks
+terkait dikirim ke provider bila API diizinkan. API key hanya dari environment
+atau `.env`; clone repo saja belum menyediakan model, PDF, database, dan cache.
+
+Jawaban baru dan diagnostik menulis salinan database tersendiri. Evaluasi RAGAS
+menyimpan artefak baru yang mengikat jawaban, seluruh konteks generation, config,
+model, hash, dan usage. Kegagalan evaluasi tidak menghalangi pembacaan jawaban.
+Panduan setup, batas biaya, dan troubleshooting ada di [USAGE.md](USAGE.md).
+Jangan menjalankan `uv sync` atau `uv run` pada environment CUDA lokal saat ini.
+
+## Status dan batas hasil
+
+Integrasi KB penuh, jawaban bersitasi, PDF sumber, dan evaluasi RAGAS opsional
+sudah tersedia. Tes utama dan tes adapter RAGAS memakai provider mock; alur
+cache-only, worker terpisah, dan embedding lokal sudah diuji. Fitur evaluasi UI
+baru belum diuji dengan request API berbayar nyata. Akurasi manusia dan kualitas
+retrieval untuk seluruh jenis pertanyaan belum dibuktikan.
+
+Benchmark MVP empat paper dan hasil eksperimen terdahulu dipertahankan sebagai
+riwayat terpisah, termasuk [laporan M6](eval/results/2026-11-19T01-25-11Z_7492c6/m6-summary.md).
+Status pekerjaan aktif ada di [TASKS-SKRIPSI.md](TASKS-SKRIPSI.md); riwayat benchmark
+ada di [TASKS.md](TASKS.md).
 
 ## Mulai dan dokumentasi
 

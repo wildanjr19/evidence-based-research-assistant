@@ -53,6 +53,8 @@ class StructuredBackend:
                     )
                 ]
             )
+        elif "AnswerRelevanceOutput" in system:
+            data = dict(question="What does Alpha support?", noncommittal=0)
         else:
             data = dict(
                 classifications=[
@@ -168,3 +170,65 @@ def test_incomplete_judge_budget_has_unknown_aggregate(prepared: tuple) -> None:
     assert report["judge_calls"] == 1
     assert report["metrics"]["faithfulness"]["mean"] is None
     assert report["metrics"]["faithfulness"]["scored"] == 0
+
+
+@pytest.mark.parametrize("opposite,expected", [(False, 1.0), (True, -1.0)])
+def test_real_relevancy_uses_local_vectors_and_preserves_cosine_range(tmp_path, opposite, expected):
+    backend = StructuredBackend()
+    client = client_for(tmp_path, backend, max_calls=5)
+
+    def vectors(texts):
+        return [
+            [-1.0, 0.0] if opposite and text != "Original question" else [1.0, 0.0]
+            for text in texts
+        ]
+
+    metrics, traces = create_metrics(client, 65536, embed_texts=vectors)
+    score = metrics["response_relevancy"].score(
+        user_input="Original question", response="Alpha supports the result."
+    )
+    assert metric_value(score, minimum=-1.0) == expected
+    assert len(traces) == 3 and backend.calls == 1
+
+
+def test_single_answer_quality_scores_and_cache_replay(prepared, monkeypatch):
+    from rag.evaluation.answer_quality import prepare_quality, score_quality
+
+    directory = prepared[2]
+    config = load_config(directory / "config.yaml")
+    config = replace(
+        config, paths=replace(config.paths, cache_dir=str(directory / "quality-cache"))
+    )
+    sample = json.loads((directory / "samples.json").read_text())[0]["generation"]
+    backend = StructuredBackend()
+
+    def vectors(texts):
+        return [[1.0, 0.0] for _ in texts]
+
+    first = score_quality(
+        prepare_quality(config, sample["answer_id"]), backend=backend, embed_texts=vectors
+    )
+    assert first["status"] == "evaluated"
+    assert first["scores"] == dict(faithfulness=1.0, response_relevancy=1.0)
+    calls = backend.calls
+    replay = score_quality(
+        prepare_quality(config, sample["answer_id"]), backend=backend, embed_texts=vectors
+    )
+    assert replay["scores"] == first["scores"]
+    assert replay["usage"]["backend_calls"] == 0 and backend.calls == calls
+    assert first["human_accuracy"] is None
+
+
+def test_single_answer_cache_miss_remains_unknown_without_api(prepared):
+    from rag.evaluation.answer_quality import prepare_quality, score_quality
+
+    directory = prepared[2]
+    config = load_config(directory / "config.yaml")
+    config = replace(
+        config, paths=replace(config.paths, cache_dir=str(directory / "quality-cache"))
+    )
+    sample = json.loads((directory / "samples.json").read_text())[0]["generation"]
+    report = score_quality(prepare_quality(config, sample["answer_id"]))
+    assert report["status"] == "failed"
+    assert all(value is None for value in report["scores"].values())
+    assert report["usage"]["backend_calls"] == 0

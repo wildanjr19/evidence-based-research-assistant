@@ -42,19 +42,19 @@ RAGAS terisolasi di `data/skripsi/s5-ragas/.venv`, lock `eval/ragas-requirements
 Jangan memasang keduanya ke `.venv` utama atau menyinkronkan environment satu sama lain.
 Shared cache model boleh dipakai. Uji encoding GPU harus memakai cache baru agar membuktikan inference nyata.
 
-Status operasional terakhir (2026-11-20):
+Status operasional terakhir (2026-11-21):
 
 | Bagian | Status |
 |---|---|
-| Korpus/UI aktif | `configs/skripsi-pilot.yaml`: PyMuPDF, 5 PDF, 310 chunk/vektor/FTS |
+| Korpus/UI aktif | `configs/skripsi-local.yaml`: KB Docling penuh, 41 PDF/40 searchable, 2.514 chunk; pilot lima PDF opsional |
 | Parser kandidat | Docling 2.151.1, Heron/TableFormer accurate/EasyOCR id/en; `do_cell_matching=True` |
 | Snapshot Docling awal | 3 PDF/41 halaman, 131 chunk/vektor/FTS; 32/55 tabel searchable, 23 ditahan |
 | Pilot input lokal terbaru | Aufar/Dewi/Koto2020: 34 halaman, 118 chunk/vektor/FTS; 9/20 tabel searchable, 11 ditahan; default hybrid khusus snapshot ini |
 | KB kandidat tahap 1 | `data/skripsi/kb-build/2026-11-20T01-06-05Z_f81029/kb/`: 17 PDF, 903 chunk; 44 tabel searchable/100 ditahan |
 | KB kandidat tahap 2 | `data/skripsi/kb-expansion/2026-11-20T01-33-36Z_3f61ac/kb/`: 18 PDF, 974 chunk; 48 tabel searchable/104 ditahan; replay identik |
 | KB koleksi lokal lengkap | `data/skripsi/kb-local-all/2026-11-20T01-59-17Z_c95c3b/kb/`: 41 PDF terdaftar/40 searchable, 2.514 chunk; 100 tabel searchable/208 ditahan |
-| Runtime jawaban/verifier | DeepSeek Flash non-thinking + MiniCheck; JEV `jev-1.14` belum dipromosikan |
-| Verifikasi terakhir kode | 567 test utama + 35 test isolated lulus; satu modul RAGAS dilewati; Ruff bersih |
+| Runtime jawaban/evaluasi | DeepSeek Flash non-thinking; RAGAS dan diagnostik MiniCheck opsional setelah jawaban; JEV `jev-1.14` belum dipromosikan |
+| Verifikasi terakhir kode | 590 test utama + 13 test RAGAS isolated lulus; satu modul RAGAS dilewati di environment utama; Ruff bersih; suite parser isolated tidak diulang |
 
 Snapshot/parser baru memakai database/index/run baru. Jangan memasangkan laporan bibliografi S3 dengan subset Docling.
 Jangan memakai chunker PyMuPDF pada artefak Docling. OCR tanpa pembanding native dan tabel ambigu tetap ditahan.

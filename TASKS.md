@@ -1531,6 +1531,126 @@ Ini diagnosis AI setelah prediksi, bukan akurasi manusia. Berikutnya kebijakan
 pelaporan verifier dan uji independen, bukan pemilihan skor terbaik atau batch
 berbayar otomatis. Detail/batas pada TASKS-SKRIPSI.md.
 
+## Kebijakan status verifier dan rancangan validasi, 2026-11-21
+
+Kebijakan pelaporan terdokumentasi pada ARCHITECTURE.md/USAGE.md: hasil MiniCheck
+bukan label manusia; penolakan bukan vonis fakta salah. Prioritas status mengikuti
+`support_label` yang sudah ada. Hasil judge/manual tidak mengganti ringkasan mesin;
+ringkasan semua sitasi dibedakan dari metrik sedikitnya satu sitasi supported.
+Enam kasus regresi baru menguji hasil hilang/error, isolasi verifier/klaim, dan
+prioritas unsupported/sitasi kosong. Kode produksi/UI/model/threshold tetap.
+
+TASKS-SKRIPSI.md memuat rancangan uji independen sebelum scoring: target 12 unit
+narasi/tabel, pasangan ID/EN dan kontrol, anotasi manusia buta, hash snapshot,
+metrik/coverage serta batas generalisasi. Ini proposal protokol, bukan dataset baru
+atau hasil evaluasi. Penambahan dataset tetap memerlukan persetujuan eksplisit;
+tidak ada generation, API berbayar, atau promosi model/default.
+Verifikasi baru: **573 test lulus, 1 modul RAGAS dilewati**; Ruff lint/format
+(122 file) dan diff check bersih. Suite Docling isolated tidak diulang karena parser
+tetap. Tidak menjalankan model/API atau membuat dataset/label baru. Diff hanya empat
+dokumen dan `tests/test_ui.py`; tidak ada korpus/secret baru. Pemeriksaan provenance
+PASS: perilaku diuji; target dataset jelas sebagai proposal. Gate visual tidak berlaku,
+source UI/layout/aset tidak berubah. Berikutnya persetujuan penambahan dataset dan
+penyiapan paket anotasi buta sesuai rancangan di TASKS-SKRIPSI.md.
+
+## Paket anotasi verifier independen, 2026-11-21
+
+Atas persetujuan pengguna, paket final disiapkan di
+`data/skripsi/verifier-independent/2026-11-21T07-18-43Z_6b031a/`: 12 unit/12 paper,
+enam narasi/enam tabel, 48 pasangan ID/EN dan kontrol. Seluruh 19 paper target
+development/validasi refinement/diagnosis dikeluarkan; sampel purposif, semua
+evidence berbahasa Inggris. Hash/halaman/provenance/config/model dan seed 42
+dibekukan sebelum scoring. Label/annotator manusia tetap null.
+
+Folder reviewer berisi CSV, JSONL, paket baca dan panduan tanpa skor/penanda
+kontrol. Import menolak konten berubah, duplikasi serta label/annotator kosong;
+hasil manusia akan menjadi versi baru melalui kontrak anotasi yang sudah ada.
+836 hash terlindungi tetap, anchor native 12 unit lolos, enam halaman tabel
+ditinjau AI; 11 test paket dan 573 test utama lulus, satu modul RAGAS dilewati.
+Ruff repo/script final serta diff check bersih; parser isolated tidak diulang.
+Hasil verifikasi akhir ada pada summary dan verification run tersebut.
+Persiapan awal disimpan; dataset final identik setelah
+perapian format script. Tidak ada inference/API, perubahan produksi/default,
+dependensi/PDF baru, cleanup atau label manusia buatan AI. Berikutnya anotasi
+manusia sebelum scoring baseline lokal; rincian/batas pada TASKS-SKRIPSI.md.
+
+## Evaluasi verifier otomatis dengan Surplus GPT, 2026-11-21
+
+Pengguna memilih jalur semua-AI dan menyetujui maksimum 60 request/1.024 output
+token per request, tanpa retry. Run
+`data/skripsi/verifier-ai-evaluation/2026-11-21T07-34-32Z_0e9735/` menyelesaikan
+48 judge awal gpt-4o-mini + 48 MiniCheck lokal + 12 audit konflik GPT. Paket
+manusia/label lama tetap, protokol AI dicatat terpisah sebelum scoring.
+
+Coverage 48/48, agreement 29/48 (60,42%), kappa 0,3133; 19 konflik. GPT awal
+30 supported/4 partial/14 rejected; MiniCheck 19 supported/29 rejected. Dua
+kontrol bermasalah diterima bersama menurut audit sumber AI; GPT tidak dijadikan
+gold. Dua belas audit tidak mengubah label awal; tujuh konflik belum diaudit GPT.
+Seluruh 60 request terpakai, 17.358 input/3.178 output token, nol kegagalan/retry,
+usage lengkap; biaya mata uang unknown. Tidak ada sisa izin paid pada batch ini.
+
+Replay 60 cache GPT/48 cache MiniCheck identik, nol request/inference baru.
+860 hash terlindungi tetap; 573 test utama + delapan guard lulus, satu modul
+dilewati, Ruff/diff bersih. Tidak mengubah produksi/default, sumber/label,
+SQL/ID/sitasi atau dependensi; parser isolated tidak diulang. Laporan lengkap
+pada summary/results/source-review run dan TASKS-SKRIPSI.md. Evaluasi AI selesai;
+human accuracy tetap null dan tidak ada promosi verifier otomatis.
+
+## Integrasi KB penuh ke UI utama, 2026-11-21
+
+Default Streamlit kini KB referensi lengkap melalui `configs/skripsi-local.yaml`,
+langsung ke form tanya; pilot lima PDF dan benchmark tetap dapat dipilih.
+Snapshot UI baru `data/skripsi/ui-local/2026-11-21T08-16-45Z_07d296/` berisi database
+turunan KB penuh/8 jawaban pilot tersimpan, dengan indeks dan receipt cocok.
+41 paper terdaftar/40 searchable, 2.514 chunk; dataset/label hasil lama utuh.
+
+Kutipan retrieval ditampilkan saat generation cache miss. Sitasi/bukti memiliki
+preview halaman PDF asli dan unduhan dengan pemeriksaan hash. Label verifier
+tetap keputusan mesin. Delapan contoh dapat dibaca tanpa API; generation baru
+memakai izin checkbox maksimal dua request, bukan izin paid batch lama.
+
+AppTest KB nyata menguji pencarian/bukti/PDF/contoh/pergantian korpus; hybrid
+nyata mengembalikan delapan chunk, nol API, sumber tetap. Server health ok pada
+127.0.0.1:8501. Browser headless ditolak kebijakan alat; tidak ada klaim uji visual
+browser/mobile baru. 576 test lulus/1 modul dilewati, Ruff/diff bersih; parser
+isolated tidak diulang. Tidak ada paid generation/judge, parsing ulang, perubahan
+model/threshold, dependency, atau cleanup. Rincian/batas di TASKS-SKRIPSI.md.
+
+## Jawaban utama dan RAGAS opsional di UI, 2026-11-21
+
+UI kini menyajikan jawaban KB bersitasi sebelum evaluasi. Tombol evaluasi terpisah
+menghitung Faithfulness/Response Relevancy melalui environment RAGAS isolated dan
+embedding lokal offline. MiniCheck menjadi diagnostik opsional; Context Recall tetap
+batch dengan acuan. Artefak per evaluasi mengikat jawaban/konteks kanonis, hash,
+config/model/backend/library/seed, traces dan usage tanpa perubahan SQL/ID/sitasi.
+Cache-first dan izin API terpisah, maksimal lima request/1.024 token output/request;
+gagal tetap null dan tidak menghilangkan jawaban. Detail ada di TASKS-SKRIPSI.md.
+
+Recovery setelah listrik padam: **590 test utama + 13 test RAGAS isolated lulus**,
+satu modul opsional dilewati di environment utama, Ruff lint/format bersih.
+Seluruh provider test dimock; nol API berbayar baru. Fitur belum diuji dengan API
+berbayar nyata; parser isolated dan visual browser/mobile tidak diulang.
+
+## Audit cleanup finishing, 2026-11-21
+
+Logger evaluator yang tidak dipakai dibuang; README diselaraskan dengan produk
+aktif dan OVERVIEW menandai rancangan awal. Audit referensi statis tidak menemukan
+definisi top-level tanpa referensi; kode benchmark historis masih digunakan.
+590 test utama + 13 test RAGAS isolated lulus, satu modul skipped di environment
+utama; Ruff/diff bersih, nol API. Daftar konkret 148 file cache/bytecode pada
+`data/cleanup-audit/2026-11-21T09-56-21Z/` disetujui pengguna dan dihapus secara
+nonrekursif; seluruh target terverifikasi tidak ada. Receipt tersimpan pada folder
+audit tersebut. Suite tidak diulang untuk penghapusan cache saja; folder cache
+dibiarkan dan dapat terisi lagi saat alat berjalan. Detail ada di TASKS-SKRIPSI.md.
+
+Persetujuan lanjutan pengguna mencakup 23 script eksperimen lokal yang diaudit:
+salinan source RAGAS untuk inspeksi, QA UI pilot, smoke UI penuh, dan launcher lama.
+Seluruhnya dihapus dan terverifikasi tidak ada (150.098 byte), dengan receipt
+`script-deletion-receipt.json` pada folder audit yang sama. Runtime, script
+pembentukan KB/replay, korpus, dan hasil laporan tetap dipertahankan.
+Tes setelah penghapusan: 590 utama/1 skipped + 13 RAGAS isolated lulus;
+Ruff lint/format dan diff check bersih. Pengujian tanpa penulisan bytecode/cache.
+
 ## Backlog (v2, jangan dikerjakan sebelum M7)
 
 - Tabel perbandingan metode antar paper.

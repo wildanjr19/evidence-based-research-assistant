@@ -24,15 +24,20 @@ Riwayat keputusan/hasil: [TASKS-SKRIPSI.md](TASKS-SKRIPSI.md) dan [TASKS.md](TAS
 | `generation/`, `verification/` | JSON klaim/sitasi, cache provider, MiniCheck/judge |
 | `evaluation/`, `ui/` | Evaluasi/reproduksi dan Streamlit |
 
-Alur sumber: ingestion, parsing, chunking, indexing. Alur query: retrieval, generation, verification.
+Alur sumber: ingestion, parsing, chunking, indexing. Alur query UI: retrieval,
+generation, jawaban bersitasi; evaluasi kualitas dan diagnostik verifier dipicu terpisah.
 Evaluation boleh mengorkestrasi modul-modul tersebut. Storage korpus/cache di `data/`, tidak di-commit.
 
 ## 3. Data flow
 
 Korpus referensi skripsi terpisah dari benchmark M6; koleksi lokal dapat memakai
 status lisensi belum terverifikasi sesuai policy eksplisit pengguna.
-Parser/UI aktif tetap PyMuPDF; generator/verifier DeepSeek Flash non-thinking + MiniCheck.
-Docling adalah kandidat opt-in, JEV `jev-1.14` masih eksperimen. Status/cakupan terbaru ada di TASKS-SKRIPSI.md.
+UI utama memakai KB lokal penuh hasil Docling, melalui `configs/skripsi-local.yaml`:
+41 PDF terdaftar/40 searchable, 2.514 chunk. PyMuPDF/pilot lima PDF dan benchmark
+historis tetap tersedia sebagai korpus terpisah. CLI parser baseline PyMuPDF tidak
+diganti; parsing tidak berjalan saat query. Generator/verifier DeepSeek Flash
+non-thinking; RAGAS dan MiniCheck opsional setelah jawaban. JEV `jev-1.14` masih eksperimen.
+Status/cakupan terbaru ada di TASKS-SKRIPSI.md.
 
 ### Persiapan korpus
 
@@ -124,6 +129,16 @@ FTS5 memakai `chunk_fts(chunk_id UNINDEXED, text)`, tokenizer `unicode61 remove_
 Retrieval membaca SQLite/index tanpa menulis sumber. Generation hanya menulis run/answer/claim; verification menyimpan dukungan.
 Model tidak dimuat bila retrieval kosong/semua low-quality. UI query memakai backup SQLite baru; demo baca-saja.
 Alias bibliografi wajib cocok dengan hash sumber/seluruh korpus. Perubahan identitas/config mereset jawaban/izin; judge tidak dipanggil UI.
+
+Default UI memilih KB penuh dan form tanya; pemilih korpus mengikat config,
+receipt dan demo yang sesuai. Database UI baru menyalin snapshot pilot generation
+KB penuh beserta delapan jawaban tersimpan; indeks/chunk tetap dari KB penuh.
+Demo diikat hash seluruh chunk, bukan string ID saja. Asal/hash snapshot disimpan
+pada manifest lokal UI. Retrieval form tetap empat mode produksi yang ada,
+default hybrid mengikuti config; helper refinement pilot tidak dipromosikan.
+Saat generation cache miss, kutipan retrieval tetap ditampilkan sebagai bukti
+pencarian, bukan klaim jawaban. Preview/unduh PDF membaca berkas dalam raw/pdf
+dengan nama paper kanonis dan hash cocok SQL; halaman PDF asli dirender lokal.
 
 ## 4. Skema data (SQLite)
 
@@ -280,6 +295,54 @@ Judge generatif memakai keluarga berbeda dari generator dan seed untuk sampel kl
 JEV menyimpan probabilitas, model aktual, confidence/usage/latensi; rationale null. Confidence bukan ambang terkalibrasi.
 Pasangan pembandingan memakai teks/hash sama. Judge/agreement terpisah dari metrik utama MiniCheck.
 
+### Kebijakan pelaporan verifier
+
+Status UI merangkum hasil mesin, bukan kebenaran faktual atau label manusia.
+`ui.service.support_label` menerapkan urutan berikut pada setiap klaim:
+
+| Kondisi | Status UI | Makna |
+|---|---|---|
+| `unsupported: true` atau sitasi kosong | Tidak ada bukti | Klaim tidak memenuhi kontrak bukti jawaban; bukan pernyataan bahwa bukti tidak ada di seluruh korpus |
+| Semua sitasi `supported` oleh MiniCheck | Didukung MiniCheck | Semua pasangan tersitasi diterima model; bukan jaminan fakta benar |
+| Ada sitasi `not_supported` atau `partially_supported` | Perlu diperiksa | Baca kutipan dan halaman PDF; penolakan model tidak membuktikan fakta salah |
+| Kondisi lain, termasuk hasil hilang/error | Belum diverifikasi | Dukungan seluruh sitasi belum diketahui; bukan penolakan atau abstention |
+
+Penolakan/partial tetap menghasilkan "Perlu diperiksa" bila sitasi lain belum dinilai.
+Hasil judge/manual atau hasil klaim lain tidak mengganti ringkasan MiniCheck.
+Audit sumber dilaporkan terpisah dengan identitas pemeriksa (AI/manusia), chunk,
+halaman, hash sumber, alasan, dan batas pemeriksaan. Audit AI bukan label manusia.
+Konflik angka antarhalaman tetap dicatat; jangan memilih angka untuk memperbaiki skor.
+Label/probabilitas asli dipertahankan. Terjemahan, pelemahan atribusi, serialisasi,
+atau pemilihan skor view tertinggi belum boleh mengganti hasil kanonis.
+
+Ringkasan UI memerlukan semua sitasi supported, sedangkan citation recall/faithfulness
+implementasi pada bagian 9 memerlukan sedikitnya satu sitasi supported per klaim.
+Laporkan keduanya sesuai denominator; jangan menyamakan label UI dengan metrik tersebut.
+Nol klaim tanpa konteks dan penolakan provider dengan konteks dilaporkan terpisah.
+Cache miss/error generation tetap kegagalan, bukan abstention atau bukti korpus kosong.
+
+### Evaluasi kualitas jawaban di UI
+
+`evaluation/answer_quality.py` membekukan jawaban kanonis dan seluruh konteks generation,
+termasuk chunk yang tidak disitasi. Hash database, laporan generation, konteks, input,
+dan config diperiksa sebelum scoring. Jawaban UI juga harus cocok dengan jawaban tersimpan.
+Setiap evaluasi membuat artefak baru di `paths.cache_dir/answer-quality/`; tidak mengubah
+SQL, ID, sitasi, label lama, atau database sumber.
+
+Worker RAGAS berjalan pada environment isolated S5. Adapter menggunakan CachedLLM/Judge
+yang sama: cache-first, izin API eksplisit terpisah, maksimal lima request dan 1.024
+token output/request, tanpa retry jaringan. Relevancy menggunakan embedding lokal
+pinned melalui subprocess environment utama dengan model offline. Strictness tiga
+memakai cache prompt yang sama; jangan menganggapnya tiga sampel independen.
+Laporan menyimpan config/model/backend/revision, versi library/kode, seed, traces,
+usage, hash, dan status evaluated/partial/failed. Kegagalan tetap null, bukan nol.
+
+Faithfulness mengukur dukungan konteks terhadap jawaban, bukan ketepatan per sitasi.
+Response Relevancy membandingkan pertanyaan asli dengan pertanyaan hasil judge melalui
+cosine (-1 sampai 1), bukan mengukur kebenaran fakta. Context Recall tetap batch dengan
+acuan. MiniCheck menjadi diagnostik opsional pada snapshot database baru, tanpa
+menahan penyajian jawaban. Tidak ada promosi hasil AI menjadi akurasi manusia.
+
 ## 9. Protokol evaluasi
 
 Dataset JSONL: `qid`, `question`, `qtype`, `gold_paper_ids`, `gold_chunk_ids`, `reference_answer` opsional.
@@ -322,7 +385,9 @@ Device CPU/CUDA eksplisit, tanpa fallback diam-diam. Torch CUDA manual belum sel
 
 ## 12. Keputusan aktif dan batas
 
-Storage SQLite + LanceDB/FTS5; UI Streamlit. Parser aktif PyMuPDF, kandidat Docling opt-in; runtime DeepSeek/MiniCheck.
+Storage SQLite + LanceDB/FTS5; UI Streamlit memakai KB lokal penuh Docling.
+CLI parser baseline PyMuPDF dan jalur Docling terisolasi tetap; runtime DeepSeek,
+evaluasi RAGAS dan diagnostik MiniCheck opsional.
 Arah korpus referensi skripsi open access; target lama arXiv saja/100-500 paper sudah digantikan. Agreement saja tidak mempromosikan JEV.
 Input lokal `data/reference-skripsi/` berisi 41 PDF + 3 TXT; audit awal 746 halaman tersedia.
 Admission/lisensi batch, uji scan asli, kalibrasi gate, dan validasi manusia masih terbuka.

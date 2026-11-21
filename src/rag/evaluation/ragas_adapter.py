@@ -4,12 +4,18 @@ import json
 import math
 import os
 from collections import Counter
+from collections.abc import Callable
 
 from rag.generation.citations import _reject_constant, _unique_object
 from rag.generation.client import CachedLLM, LLMError
 
 
-def create_metrics(client: CachedLLM, max_prompt_bytes: int) -> tuple[dict, list[dict]]:
+def create_metrics(
+    client: CachedLLM,
+    max_prompt_bytes: int,
+    *,
+    embed_texts: Callable[[list[str]], list[list[float]]] | None = None,
+) -> tuple[dict, list[dict]]:
     # Ragas telemetry is unrelated to the explicitly authorized model requests.
     os.environ["RAGAS_DO_NOT_TRACK"] = "true"
     from ragas.llms.base import InstructorBaseRagasLLM
@@ -63,6 +69,10 @@ def create_metrics(client: CachedLLM, max_prompt_bytes: int) -> tuple[dict, list
                 row.attributed not in (0, 1) for row in parsed.classifications
             ):
                 raise ValueError("Ragas context recall used an invalid attribution")
+            if response_model.__name__ == "AnswerRelevanceOutput" and (
+                parsed.noncommittal not in (0, 1) or not parsed.question.strip()
+            ):
+                raise ValueError("Ragas relevancy returned an invalid question/noncommittal flag")
             traces.append(dict(schema=response_model.__name__, output=parsed.model_dump()))
             return parsed
 
@@ -70,11 +80,29 @@ def create_metrics(client: CachedLLM, max_prompt_bytes: int) -> tuple[dict, list
             return self.generate(prompt, response_model)
 
     llm = BoundedLLM()
-    return dict(faithfulness=Faithfulness(llm=llm), context_recall=ContextRecall(llm=llm)), traces
+    metrics = dict(faithfulness=Faithfulness(llm=llm), context_recall=ContextRecall(llm=llm))
+    if embed_texts is not None:
+        from ragas.embeddings.base import BaseRagasEmbedding
+        from ragas.metrics.collections import AnswerRelevancy
+
+        class LocalEmbeddings(BaseRagasEmbedding):
+            def embed_text(self, text: str, **kwargs: object) -> list[float]:
+                return embed_texts([text])[0]
+
+            async def aembed_text(self, text: str, **kwargs: object) -> list[float]:
+                return self.embed_text(text)
+
+            async def aembed_texts(self, texts: list[str], **kwargs: object) -> list[list[float]]:
+                return embed_texts(texts)
+
+        metrics["response_relevancy"] = AnswerRelevancy(
+            llm=llm, embeddings=LocalEmbeddings(), strictness=3, allowed_values=(-1.0, 1.0)
+        )
+    return metrics, traces
 
 
-def metric_value(result: object) -> float:
+def metric_value(result: object, *, minimum: float = 0.0) -> float:
     value = float(result.value)
-    if not math.isfinite(value) or not 0 <= value <= 1:
-        raise ValueError("Ragas score is undefined or outside [0, 1]")
+    if not math.isfinite(value) or not minimum <= value <= 1:
+        raise ValueError("Ragas score is undefined or outside its metric range")
     return value

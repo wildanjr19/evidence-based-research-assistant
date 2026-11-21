@@ -6,6 +6,14 @@
 
 ## 1. Overview
 
+**Status aktif (2026-11-21):** aplikasi menjawab dari KB lokal referensi skripsi
+41 PDF/40 searchable/2.514 chunk. Jawaban bersitasi tampil sebelum evaluasi
+Faithfulness dan Response Relevancy RAGAS yang dipicu pengguna; MiniCheck opsional.
+Koleksi pengguna boleh diproses lokal dengan label sumber/lisensi belum terverifikasi.
+Rincian operasional ada di [README.md](README.md), [USAGE.md](USAGE.md), dan
+[ARCHITECTURE.md](ARCHITECTURE.md). Target korpus, pilihan model, estimasi biaya,
+dan alur verifikasi di bawah adalah rancangan awal; bukan status runtime saat ini.
+
 Peneliti sering kesulitan membaca, membandingkan, dan menyintesis banyak paper sekaligus. Alat ringkasan berbasis AI memang membantu, tetapi jawabannya sering tidak disertai bukti yang bisa diperiksa, bahkan kadang mengarang sitasi.
 
 Proyek ini adalah sistem **Retrieval-Augmented Generation (RAG)** yang berjalan lokal, dengan fokus pada **verifiability**: setiap klaim dalam jawaban harus menunjuk ke potongan teks (chunk) spesifik dari paper sumber, dan ketepatan sitasi tersebut **diukur secara kuantitatif**.

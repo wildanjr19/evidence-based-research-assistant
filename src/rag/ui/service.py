@@ -10,7 +10,7 @@ from rag.config import Config
 from rag.generation.pipeline import generate_answer
 from rag.generation.render import render_answer
 from rag.generation.store import connect_corpus
-from rag.ids import is_valid_chunk_id, make_run_id
+from rag.ids import is_valid_chunk_id, make_run_id, paper_file_stem
 from rag.indexing.embedding import text_hash
 from rag.indexing.pipeline import load_chunks
 from rag.retrieval.pipeline import Retriever
@@ -154,6 +154,30 @@ def license_label(value: str) -> str:
     )
 
 
+def load_pdf_page(config: Config, paper_id: str, page: int) -> dict:
+    """Render the admitted PDF, checking its hash before exposing local bytes."""
+    import pymupdf
+
+    with closing(connect_corpus(config)) as connection:
+        row = connection.execute(
+            "SELECT pdf_sha256 FROM paper WHERE paper_id = ?", (paper_id,)
+        ).fetchone()
+    if row is None:
+        raise ValueError("Paper tidak ada dalam korpus aktif.")
+    root = (Path(config.paths.raw_dir) / "pdf").resolve()
+    path = (root / (paper_file_stem(paper_id) + ".pdf")).resolve()
+    if not path.is_relative_to(root):
+        raise ValueError("Path PDF berada di luar koleksi aktif.")
+    content = path.read_bytes()
+    if hashlib.sha256(content).hexdigest() != row[0]:
+        raise ValueError("Hash PDF berbeda dari sumber terdaftar.")
+    with pymupdf.open(stream=content, filetype="pdf") as pdf:
+        if type(page) is not int or not 1 <= page <= len(pdf):
+            raise ValueError("Halaman PDF di luar rentang sumber.")
+        image = pdf[page - 1].get_pixmap(matrix=pymupdf.Matrix(1.5, 1.5)).tobytes("png")
+    return dict(image=image, pdf=content, filename=path.name)
+
+
 def load_demo(config: Config, directory: Path) -> list[dict]:
     """Bind saved evaluation answers to the exact corpus, without running models."""
     metrics = json.loads((directory / "metrics.json").read_text(encoding="utf-8"))
@@ -235,6 +259,7 @@ def load_answer(config: Config, answer_id: str) -> dict:
         status=notes["status"],
         claims=claims,
         verification=verification,
+        database_path=config.paths.db_path,
     )
 
 
@@ -254,7 +279,9 @@ def support_label(claim: dict, verification: list[dict]) -> str:
     return "Belum diverifikasi"
 
 
-def run_question(question: str, config: Config, mode: str, *, allow_api: bool = False) -> dict:
+def run_question(
+    question: str, config: Config, mode: str, *, allow_api: bool = False, verify: bool = False
+) -> dict:
     """Keep query writes in a new snapshot; the benchmark database stays read-only."""
     if not question.strip():
         raise ValueError("Tulis pertanyaan sebelum mencari bukti.")
@@ -275,10 +302,11 @@ def run_question(question: str, config: Config, mode: str, *, allow_api: bool = 
     )
     generation = generate_answer(question, chunks, query_config, allow_api=allow_api, mode=mode)
     verification = []
-    if generation["status"] == "ok":
+    if verify and generation["status"] == "ok":
         verification = verify_answer(generation, query_config, CachedVerifier(query_config))
     answer = load_answer(query_config, generation["answer_id"])
     answer["verification"] = verification
+    answer["retrieved_chunks"] = chunks
     answer["report_path"] = generation["report_path"]
     answer["api_allowed"] = allow_api
     answer["usage"] = {
@@ -292,3 +320,19 @@ def run_question(question: str, config: Config, mode: str, *, allow_api: bool = 
         )
     }
     return answer
+
+
+def run_diagnostics(config: Config, answer: dict) -> list[dict]:
+    """Optional MiniCheck writes to its own snapshot, including for saved examples."""
+    source_config = replace(config, paths=replace(config.paths, db_path=answer["database_path"]))
+    canonical = load_answer(source_config, answer["answer_id"])
+    directory = Path(config.paths.cache_dir) / "ui-diagnostics" / make_run_id().replace(":", "-")
+    directory.mkdir(parents=True, exist_ok=False)
+    database = directory / "corpus.db"
+    with (
+        closing(connect_corpus(source_config)) as source,
+        closing(sqlite3.connect(database)) as target,
+    ):
+        source.backup(target)
+    selected = replace(config, paths=replace(config.paths, db_path=str(database)))
+    return verify_answer(canonical, selected, CachedVerifier(selected))

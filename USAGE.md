@@ -17,7 +17,8 @@ Config default embedding masih CPU. Pada Linux gunakan `.venv/bin/python`; Windo
 Untuk melewati test GPU, tambahkan `-m "not gpu"` pada pytest. Instalasi environment **baru saja**:
 `python -m pip install --user uv`, lalu `python -m uv sync --locked`; ini bukan prosedur untuk memperbaiki `.venv` CUDA saat ini.
 
-Config YAML bertipe/tervalidasi; path relatif terhadap direktori kerja. Contoh aktif: `configs/skripsi-pilot.yaml`.
+Config YAML bertipe/tervalidasi; path relatif terhadap direktori kerja.
+UI utama memakai `configs/skripsi-local.yaml`; `configs/skripsi-pilot.yaml` mempertahankan pilot lima PDF.
 Model/revision, ukuran chunk, device, top-k, dan batas panggilan berasal dari config; jangan mencampur snapshot/ruang embedding.
 Jika model sudah tersedia dan seluruh proses harus offline:
 
@@ -214,6 +215,40 @@ MiniCheck adalah verifier lokal; validitas ID tidak membuktikan dukungan makna. 
 
 ## Tanya korpus skripsi di Streamlit (S4)
 
+Jalankan UI utama dari root repo:
+
+```powershell
+.venv/Scripts/python.exe -m streamlit run src/rag/ui/app.py --server.address 127.0.0.1
+```
+
+Buka `http://127.0.0.1:8501`. Pilihan awal adalah **Referensi skripsi lengkap
+(41 PDF)**, langsung pada **Tanya korpus**: 40 searchable/2.514 chunk; Parasuraman
+tetap terdaftar tanpa chunk. Pemilih korpus juga menyediakan pilot lima PDF dan
+benchmark historis dengan config/database/demo masing-masing. Izin API dan jawaban
+direset ketika korpus berubah.
+
+**Cari bukti** memakai hybrid sesuai config KB penuh; BM25/dense/rerank juga dapat
+dipilih. Tanpa izin API, pertanyaan baru tetap menampilkan kutipan hasil retrieval
+meski jawaban belum ada di cache. Untuk menyusun jawaban baru, centang izin API
+berbayar sebelum submit (maksimal dua request, termasuk koreksi format). Pengujian
+integrasi ini tidak membuat request berbayar baru.
+
+Pilih **Demo tersimpan** untuk membuka delapan jawaban pilot KB penuh tanpa API
+atau model inference. Jawaban itu menggunakan konteks refinement eksperimental
+yang sudah dibekukan saat pilot; bukan hasil retrieval ulang dari form saat ini.
+Sumber/halaman/kutipan tetap cocok dengan KB penuh, label mesin tetap apa adanya.
+Buka sitasi lalu centang **Lihat halaman PDF asli** untuk membaca halaman asli
+dan **Unduh PDF sumber**. Hash PDF diperiksa terhadap metadata korpus sebelum
+halaman/byte file ditampilkan. PDF disajikan lokal; tidak mengunduh paper baru.
+
+`configs/skripsi-local.yaml` mengikat database UI baru
+`data/skripsi/ui-local/2026-11-21T08-16-45Z_07d296/corpus.db`, indeks KB penuh,
+receipt admission lokal yang sama dan delapan jawaban pilot tersalin. Asal/hash
+tercatat di manifest folder tersebut; query tetap menulis backup/run baru di cache.
+Folder data bersifat lokal dan tidak di-commit. Kontrak SQL/ID/sitasi tetap.
+
+Perintah eksplisit untuk pilot lima PDF (opsional):
+
 ```powershell
 .venv/Scripts/python.exe -m streamlit run src/rag/ui/app.py --server.address 127.0.0.1 -- --config configs/skripsi-pilot.yaml --bibliography-report data/skripsi/pilot-v1/index/reports/prepare-2026-11-19T07-11-50Z_3aa5f1.json
 ```
@@ -223,7 +258,40 @@ Jangan memasangkan laporan S3 dengan subset Docling atau demo M6 dengan korpus s
 UI membedakan referensi terdaftar dari paper searchable; sitasi membuka judul, halaman PDF, kutipan, dan lisensi asli.
 Setiap submit memakai backup SQLite baru di cache; jawaban dan izin API direset bila identitas korpus berubah.
 Checkbox API hanya berlaku pada submit tersebut, maksimal dua percobaan termasuk koreksi format atau batas config yang lebih kecil.
-Judge tidak berjalan dari UI. Status didukung memerlukan semua sitasi didukung MiniCheck; error tetap belum diverifikasi.
+Jawaban tampil sebelum evaluasi. MiniCheck tidak berjalan otomatis; buka
+**Diagnostik MiniCheck (opsional)** lalu **Jalankan MiniCheck lokal** bila diperlukan.
+Hasil lama tetap dapat dibaca. Diagnostik baru memakai salinan database tersendiri.
+
+Klik **Evaluasi kualitas** untuk menghitung **Faithfulness** dan **Response Relevancy**
+pada jawaban yang sedang dibaca. Izin API evaluasi terpisah dari izin generator dan
+default mati. Cache diperiksa dahulu; aktifkan checkbox evaluasi bila mengizinkan
+pengiriman pertanyaan/jawaban/konteks ke provider judge. Batas per klik: lima request,
+1.024 token output/request, tanpa retry jaringan. Kegagalan dan cache miss menjadi
+**Belum tersedia**, bukan skor nol; jawaban tetap dapat dibaca.
+
+Evaluator memakai RAGAS di `data/skripsi/s5-ragas/.venv`; embedding pertanyaan memakai
+model lokal pinned dari environment utama, hanya cache model offline. Tidak perlu
+memasang RAGAS ke environment CUDA. Laporan baru di `paths.cache_dir/answer-quality/`
+menyimpan jawaban, seluruh konteks asli termasuk yang tidak disitasi, hash, config,
+model, seed, traces, dan usage. Jangan membagikan folder ini karena berisi teks korpus.
+Faithfulness memakai seluruh konteks terambil; Response Relevancy memakai cosine
+pertanyaan asli dan pertanyaan hasil judge (rentang -1 sampai 1). Keduanya estimasi AI,
+bukan jaminan kebenaran atau akurasi setiap sitasi. Context Recall tetap evaluasi batch
+yang memerlukan jawaban acuan. Pergantian jawaban/korpus mereset hasil dan izin evaluasi.
+
+Arti label mengikuti [kebijakan pelaporan verifier](ARCHITECTURE.md#kebijakan-pelaporan-verifier):
+
+- **Didukung MiniCheck:** model menerima semua sitasi klaim; tetap periksa kutipan dan PDF asli.
+- **Perlu diperiksa:** sedikitnya satu sitasi ditolak/partial, termasuk bila hasil sitasi lain belum tersedia.
+  Ini bukan keputusan bahwa klaim salah; diagnosis lokal menemukan sensitivitas bahasa, atribusi, dan tabel.
+- **Belum diverifikasi:** hasil belum lengkap atau error, tanpa penolakan/partial yang tercatat.
+- **Tidak ada bukti:** klaim ditandai unsupported atau tidak memiliki sitasi valid;
+  ini tidak membuktikan seluruh korpus tidak memuat bukti.
+
+Hasil judge dan audit sumber dibaca terpisah; keduanya tidak menimpa label MiniCheck.
+Audit AI bukan verifikasi manusia. Jangan mengubah threshold atau memilih terjemahan/view
+berdasarkan skor tertinggi. UI memerlukan semua sitasi supported; metrik citation
+recall/faithfulness memakai sedikitnya satu sitasi supported per klaim.
 
 ## UI Streamlit dan demo lokal
 
@@ -328,6 +396,53 @@ data/skripsi/s5-ragas/.venv/Scripts/python.exe -m rag.evaluation.ragas score --i
 Default cache-only. `--offset`/`--limit` memilih subset; manifest tetap mengikat dataset utuh.
 Faithfulness terhadap konteks terambil dan context recall terhadap acuan AI bukan precision sitasi atau gold manusia.
 Batas batch/token/prompt tetap keras, tanpa retry jaringan/judge. Telemetri RAGAS mati; laporan/replay selalu run baru.
+
+## Anotasi verifier independen
+
+Paket yang disetujui 2026-11-21 berada di
+`data/skripsi/verifier-independent/2026-11-21T07-18-43Z_6b031a/`.
+Baca `reviewer/README.txt`, lalu salin `reviewer/annotations.csv` menjadi
+`reviewer/annotations-filled.csv`. Isi hanya `label`, `annotator`, dan `notes`.
+Label: `supported`, `partially_supported`, atau `not_supported`; bila ambigu,
+biarkan kosong dan catat alasan untuk ditinjau, jangan menebak. `evidence.md`
+menyajikan seluruh chunk. Jangan membuka maintainer/specs atau prediksi model
+sebelum penilaian selesai. File asli dibekukan dan tidak diedit.
+
+Periksa paket atau import salinan CSV lengkap dari root repo:
+
+```powershell
+$annotationRun = 'data/skripsi/verifier-independent/2026-11-21T07-18-43Z_6b031a'
+.venv/Scripts/python.exe "$annotationRun/prepare.py" check
+.venv/Scripts/python.exe "$annotationRun/prepare.py" import --csv "$annotationRun/reviewer/annotations-filled.csv"
+```
+
+Import memerlukan 48 label manusia dan annotator terisi; konten sumber wajib
+identik. Hasil menjadi folder `human-labels-<timestamp>` baru, bukan penimpaan
+file beku. Notes disimpan pada receipt. Import tidak menjalankan scoring/model/API.
+Scoring baseline lokal dilanjutkan setelah label selesai, pada run baru.
+Sampel 48 pasangan berasal dari 12 unit berkorelasi; bukti semuanya Inggris.
+Hasil belum mengukur retrieval/generation atau akurasi seluruh korpus.
+
+### Alternatif seluruhnya AI, selesai 2026-11-21
+
+Atas instruksi pengguna, paket yang sama telah dinilai otomatis pada
+`data/skripsi/verifier-ai-evaluation/2026-11-21T07-34-32Z_0e9735/`.
+Jalur ini tidak memerlukan label manusia, tetapi hanya melaporkan evaluasi AI.
+48 penilaian gpt-4o-mini, 48 MiniCheck lokal dan 12 audit GPT selesai; seluruh
+60 request yang diizinkan telah digunakan. Jangan mengulang fase paid, mereset
+marker/journal atau menganggap replay memberi izin request baru.
+
+Laporan: `summary.md`, `results.json`, `per-pair.json`, `source-review.md`.
+Replay tanpa API/inference baru, ke folder hasil baru:
+
+```powershell
+.venv/Scripts/python.exe data/skripsi/verifier-ai-evaluation/2026-11-21T07-34-32Z_0e9735/run.py replay
+```
+
+Replay membutuhkan cache lengkap dan environment GPT_MODEL_ID yang sama dengan
+rencana beku; cache miss tidak boleh diatasi dengan mengaktifkan API otomatis.
+Agreement bukan akurasi manusia; audit model sama tidak menimpa label awal.
+Paket anotasi manusia tetap tersedia terpisah, seluruh labelnya masih kosong.
 
 ## Troubleshooting
 
