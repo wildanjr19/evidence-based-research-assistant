@@ -98,12 +98,11 @@ Tema berada di `.streamlit/config.toml`; aturan tipografi dan reflow berada di
 
 ### Pertanyaan baru melalui API
 
-Form Tanya korpus menambahkan checkbox izin API berbayar yang default-nya mati.
-Label memuat batas request per submit; catatan di dekatnya menunjukkan model,
-provider, batas output, dan pengiriman pertanyaan/chunk ke provider. Checkbox
-native memakai target minimal 44px dan fokus yang sama dengan radio. Caption
-setelah submit menunjukkan percobaan, cache hit, serta token tercatat; kegagalan
-API dibedakan dari cache miss dan ketiadaan bukti. Dial serta palet tetap 1/2/1.
+API generator/evaluator aktif otomatis sesuai instruksi pengguna 2026-11-22.
+Form menampilkan model/provider dan batas request, tanpa checkbox izin. Penggunaan
+token berada dalam expander ringkas, dengan tabel tiga kolom (tahap/input/output),
+total tercatat dan catatan usage hilang/cache hit. Tabel pendek menjaga lebar baca.
+Kegagalan API tetap dibedakan dari ketiadaan bukti. Dial/palet tetap 1/2/1.
 
 ### Korpus bibliografi S4
 
@@ -118,3 +117,14 @@ Section ditandai sebagai perkiraan parser, disertai catatan tentang tabel/rumus.
 Heading jawaban memakai h2 setelah h1. Tombol submit diberi selector khusus
 untuk mempertahankan target minimal 44px terhadap gaya native Streamlit 40px.
 Tidak ada palet, aset, navigasi, atau animasi baru.
+
+### Card klaim dan RAGAS (2026-11-22)
+
+Dial tetap 1/2/1. Setiap klaim memakai container native berbingkai untuk mengikat
+teks, nomor sitasi dan metrik dalam satu kelompok. Urutan vertikal
+tetap mengikuti alur baca; tanpa shadow atau warna status baru. Judul card h3
+berada di bawah h2 jawaban. Dua metrik native memuat placeholder sebelum dinilai,
+kemudian skor atau status belum tersedia. Evaluasi otomatis memakai spinner
+bernomor card, tanpa tombol/checkbox tambahan. Penjelasan metrik dipindah ke
+expander setelah card agar klaim tetap fokus utama. Keyboard/fokus dan reflow memakai
+kontrol/CSS yang sudah ada. Tidak ada aset baru.

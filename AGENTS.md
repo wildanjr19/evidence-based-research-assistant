@@ -53,8 +53,8 @@ Status operasional terakhir (2026-11-21):
 | KB kandidat tahap 1 | `data/skripsi/kb-build/2026-11-20T01-06-05Z_f81029/kb/`: 17 PDF, 903 chunk; 44 tabel searchable/100 ditahan |
 | KB kandidat tahap 2 | `data/skripsi/kb-expansion/2026-11-20T01-33-36Z_3f61ac/kb/`: 18 PDF, 974 chunk; 48 tabel searchable/104 ditahan; replay identik |
 | KB koleksi lokal lengkap | `data/skripsi/kb-local-all/2026-11-20T01-59-17Z_c95c3b/kb/`: 41 PDF terdaftar/40 searchable, 2.514 chunk; 100 tabel searchable/208 ditahan |
-| Runtime jawaban/evaluasi | DeepSeek Flash non-thinking; RAGAS dan diagnostik MiniCheck opsional setelah jawaban; JEV `jev-1.14` belum dipromosikan |
-| Verifikasi terakhir kode | 590 test utama + 13 test RAGAS isolated lulus; satu modul RAGAS dilewati di environment utama; Ruff bersih; suite parser isolated tidak diulang |
+| Runtime jawaban/evaluasi | DeepSeek Flash non-thinking; RAGAS otomatis per card di UI, MiniCheck opsional; JEV `jev-1.14` belum dipromosikan |
+| Verifikasi terakhir kode (2026-11-22) | 598 test utama + 15 test RAGAS isolated lulus; satu modul RAGAS dilewati di environment utama; Ruff bersih; suite parser isolated tidak diulang |
 
 Snapshot/parser baru memakai database/index/run baru. Jangan memasangkan laporan bibliografi S3 dengan subset Docling.
 Jangan memakai chunker PyMuPDF pada artefak Docling. OCR tanpa pembanding native dan tabel ambigu tetap ditahan.
@@ -92,7 +92,8 @@ rincian run tidak disalin di sini.
 ## 6. Secret dan biaya API
 
 - Key hanya dari environment/`.env`; jangan hardcode, mencetak, atau commit. Perbarui `.env.example` jika menambah variabel.
-- Test memakai mock/fixture, tanpa API berbayar. Default generation/judge hanya cache; cache miss bukan abstention.
+- Test memakai mock/fixture, tanpa API berbayar. CLI/fungsi dasar default cache-only; cache miss bukan abstention.
+- Instruksi pengguna 2026-11-22 mengizinkan API UI otomatis: maksimal 2 generator/submit dan 5 evaluator/card, cache-first. Tidak perlu konfirmasi per klik; izin ini bukan batch eksperimen baru.
 - Request nyata harus eksplisit, berizin, dan berbatas jumlah panggilan/token; hitung kegagalan dan retry format dalam jatah.
 - Batch M6/S5 sudah selesai. Jangan mengulang fase berbayar, mereset ledger/marker, atau menganggap sisa jatah sebagai izin baru.
 - Setelah crash, periksa receipt/cache dan replay tanpa API dahulu. JEV harus tetap versi eksplisit `jev-1.14`.

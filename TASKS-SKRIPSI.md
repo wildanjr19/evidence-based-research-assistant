@@ -1,6 +1,6 @@
 # Status korpus referensi skripsi
 
-Status produk terakhir: 2026-11-21. Dokumentasi diringkas 2026-11-22.
+Status produk terakhir: 2026-11-22. Dokumentasi diringkas 2026-11-22.
 Tujuan: menjawab dari referensi pengguna dengan sitasi hingga halaman PDF/kutipan.
 Riwayat MVP terpisah di [TASKS.md](TASKS.md); kontrak di [ARCHITECTURE.md](ARCHITECTURE.md),
 perintah di [USAGE.md](USAGE.md), dan persiapan korpus di [KB-PREPARATION.md](KB-PREPARATION.md).
@@ -14,11 +14,12 @@ perintah di [USAGE.md](USAGE.md), dan persiapan korpus di [KB-PREPARATION.md](KB
   84 entri/83 referensi setelah Szeghalmy; sumber asli tidak diubah.
 - UI default `configs/skripsi-local.yaml`: Tanya korpus, delapan demo KB penuh,
   sitasi/preview PDF, DeepSeek Flash non-thinking. Jawaban tampil dahulu;
-  RAGAS dan diagnostik MiniCheck opsional. Helper refinement retrieval belum produksi.
-- API default cache-only; izin generator/evaluasi terpisah dan berbatas.
+  RAGAS otomatis per card, diagnostik MiniCheck opsional. Helper refinement belum produksi.
+- API UI aktif otomatis/cache-first sesuai instruksi 2026-11-22, dengan batas
+  dua request generator/submit dan lima evaluator/card; CLI default cache-only.
   Seluruh batch berbayar historis sudah selesai; sisa jatah bukan izin baru.
-- Verifikasi kode terakhir: 590 test utama lulus/1 modul RAGAS skipped,
-  13 test adapter RAGAS isolated lulus, Ruff lint/format dan diff check bersih.
+- Verifikasi kode terakhir: 598 test utama lulus/1 modul RAGAS skipped,
+  15 test adapter RAGAS isolated lulus, Ruff lint/format dan diff check bersih.
   Suite parser isolated tidak diulang pada perubahan UI terakhir.
 
 Agenda berikutnya: rapikan UI berdasarkan kebutuhan penggunaan. Masih terbuka:
@@ -306,3 +307,97 @@ Validasi sesi dokumentasi: tautan lokal dan anchor Markdown diperiksa, code fenc
 seimbang, `git diff --check` bersih. Bagian SQL/ID/sitasi pada ARCHITECTURE identik
 dengan versi sebelumnya. Delapan file yang berubah hanya Markdown; pytest tidak
 diulang karena tidak ada perubahan kode. Angka test di atas tetap bukti sesi sebelumnya.
+
+## RAGAS per card klaim, 2026-11-22
+
+Atas permintaan pengguna, setiap klaim kini tampil dalam card dengan Faithfulness,
+Response Relevancy, izin API dan tombol evaluasi sendiri. Evaluator menerima claim
+ID milik jawaban kanonis; hanya teks klaim itu dinilai terhadap pertanyaan/seluruh
+konteks generation asli. Input/hasil mengikat claim ID dan hash; protokol
+`claim-quality-v1`, sedangkan evaluasi jawaban utuh tetap tersedia lewat fungsi lama.
+Tidak menyalin skor jawaban utuh atau merata-ratakan skor card. Relevancy card
+tidak mengukur kelengkapan seluruh jawaban; Context Recall tetap batch beracuan.
+
+Izin default mati, cache-first, maksimal lima request/1.024 output token per klik
+card. Beberapa card dapat menambah biaya; tidak ada evaluasi/API otomatis saat
+render. Skor/izin terpisah dan direset saat jawaban/korpus berubah. Cache miss/error
+tetap null/belum tersedia; klaim, sitasi, label dan sumber tidak diubah.
+
+596 test utama lulus/1 modul RAGAS skipped; 15 test adapter RAGAS isolated lulus;
+Ruff lint/format dan diff check bersih. Test mencakup response/context per claim,
+penolakan claim asing/hasil card lain, input tampering, cache replay, dua skor card
+berbeda, pemisahan izin dan reset. Provider test mock, tanpa API berbayar baru.
+Smoke KB nyata membuka delapan demo (3/4/2/3/1/2/0/0 card), mengevaluasi satu card
+melalui worker asli cache-only: nol request, skor null, card lain belum dievaluasi,
+reset berhasil dan hash DB sumber identik. Bukti:
+`data/ui-card-review/20261122T061518Z/smoke.json`.
+
+Delivery Gate antislop DURING (cakupan perubahan ini):
+
+- Hard Gate PASS untuk perilaku yang diuji: kontrol native berlabel, state awal/
+  loading/gagal, AppTest klik card/reset dan worker nyata; tanpa aset/dependensi baru.
+- Purpose PASS: bingkai mengikat klaim dan metriknya; arah/dial 1/2/1 di DESIGN.
+- Liveliness PASS: penomoran klaim/sitasi dan kutipan sumber tetap identitas meja baca;
+  palet/typografi/CSS tetap, tidak menambah dekorasi.
+- Craftsmanship PASS pada test/provenance: 596+15 test, Ruff, input/source binding,
+  score null bukan nol, dan source DB tetap. Kontras navy/putih 17,85:1 serta fokus
+  slate/putih 4,76:1 dihitung dengan checker skill. Antislop-code: tanpa komentar baru.
+
+Pemeriksaan otomatis menolak Edge headless (`blocked by policy`); tidak dicoba bypass.
+Visual browser/mobile, keyboard/zoom aktual dan API evaluasi berbayar belum diuji
+pada sesi ini. Interaksi diverifikasi AppTest; bukan klaim validasi visual penuh.
+Suite parser isolated tidak diulang karena parser tidak berubah.
+
+## API otomatis dan ringkasan token UI, 2026-11-22
+
+Instruksi pengguna menggantikan izin per klik: generator UI otomatis memakai API
+saat cache kosong (maksimal 2 request/submit), lalu seluruh card dievaluasi otomatis
+(maksimal 5 request/card, 1.024 output token/request). Berlaku juga ketika membuka
+demo; CLI/fungsi dasar tetap cache-only. Tidak menambah dependensi atau mengubah
+SQL/ID/sitasi/model/label. Tombol/checkbox evaluasi dihapus, penjelasan panjang
+dipindah ke expander setelah card. MiniCheck tetap lokal/opsional.
+
+Hasil/marker percobaan disimpan sebelum worker mulai. Rerun/PDF tidak mengulang
+evaluasi dalam sesi jawaban yang sama, termasuk gagal/partial. Submit baru atau
+pergantian jawaban/korpus memulai hasil sesi baru, tetap memakai cache provider.
+Expander Penggunaan token memisahkan generator/RAGAS/total input-output tercatat,
+request dan cache hit. Usage unknown ditandai; token generation demo historis
+tidak dihitung sebagai pemakaian baru. Batas biaya total mengikuti jumlah card.
+
+598 test utama lulus/1 modul skipped, 15 adapter RAGAS isolated lulus, Ruff dan
+diff check bersih. Provider unit/integrasi test dimock; regresi menguji API UI
+otomatis, dua card dengan skor terpisah, rerun/PDF tanpa panggilan ulang, gagal
+tanpa auto-retry, total token/cache dan generator demo yang tidak tercatat.
+
+Smoke AppTest `from_file` salah mengasumsikan monkeypatch evaluator berlaku;
+script app mendefinisikan ulang fungsi, sehingga 3 card demo benar-benar memanggil
+GPT-4o-mini. Ini kesalahan harness pengujian, telah diberitahukan kepada pengguna.
+Tiga card selesai: 9 request dari maksimum 15, 10.810 input/703 output token,
+6 cache hit, tanpa generation baru; biaya mata uang unknown. Receipt diperiksa
+tanpa mengulang paid, hash DB sumber identik. Bukti:
+`data/ui-card-review/20261122T063510Z/auto-api-receipts.json` dan run answer-quality
+yang dirujuk di dalamnya. Selanjutnya harness memakai import `main` dan worker
+cache-only eksplisit untuk pemeriksaan ulang tanpa API.
+
+Replay tiga card: skor identik, 15 cache hit/nol request API baru; marker card
+mencegah pengulangan saat rerun/PDF, source DB identik. Panel token menunjukkan
+nol token API baru (usage generator demo belum tersedia). Bukti:
+`data/ui-card-review/20261122T063631Z/auto-cache-replay.json`.
+
+Delivery Gate antislop DURING, cakupan perubahan ini:
+
+- Hard Gate PASS untuk kontrol/state yang diuji: AppTest submit, automatic scoring,
+  PDF rerun, failure dan token panel; kontrol izin/evaluasi tambahan dihapus.
+- Purpose PASS: skor tetap di card; penjelasan/token dalam expander agar klaim mudah dibaca.
+- Liveliness PASS: dial 1/2/1, card bernomor dan sitasi tetap; palet/CSS/aset tidak berubah.
+- Craftsmanship PASS: 598+15 test/Ruff, source hash tetap, usage missing tidak dianggap lengkap.
+
+Visual browser/mobile tidak diulang karena peluncuran headless sebelumnya ditolak
+kebijakan alat; interaksi diverifikasi AppTest. Suite parser isolated tidak diulang.
+
+Perbaikan operasional berikutnya: UI pengguna mendapat `unexpected keyword argument
+'claim_id'` karena proses Streamlit lama masih memuat evaluator sebelum update.
+Signature pada disk/fresh process sudah benar; proses server lama direstart,
+health 200. AppTest fresh process menerima tiga claim ID dan menampilkan enam metrik,
+rerun tidak mengulang evaluasi (evaluator mock, nol API baru). Tidak mengubah kode
+atau meregenerasi jawaban; pytest penuh tidak diulang untuk restart/dokumentasi.

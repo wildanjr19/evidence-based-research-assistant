@@ -21,8 +21,9 @@ koleksi ini tidak diklaim seluruhnya open access.
 1. Pilih korpus dan tulis pertanyaan Indonesia atau Inggris.
 2. Retrieval mengambil bukti lokal; generator menyusun jawaban bersitasi.
 3. Buka sitasi untuk membaca kutipan, halaman PDF, dan lisensi sumber.
-4. Klik **Evaluasi kualitas** bila ingin menghitung Faithfulness dan Response
-   Relevancy RAGAS. MiniCheck tersedia sebagai diagnostik opsional.
+4. RAGAS otomatis menghitung Faithfulness dan Response Relevancy di tiap card.
+   Buka **Penggunaan token** untuk melihat pemakaian generator/evaluator.
+   MiniCheck tersedia sebagai diagnostik opsional.
 
 Jawaban tampil sebelum evaluasi. Skor RAGAS adalah estimasi AI terhadap konteks
 atau relevansi, bukan jaminan kebenaran maupun ketepatan setiap sitasi. Context
@@ -47,11 +48,12 @@ melalui `configs/skripsi-local.yaml`. Mode **Demo tersimpan** menyediakan delapa
 jawaban pilot tanpa panggilan generator baru. Pilihan korpus juga menyediakan
 pilot lima PDF dan benchmark historis dengan config masing-masing.
 
-Untuk membuat jawaban baru, centang izin API generator sebelum **Cari bukti**:
-maksimal dua request per submit, termasuk koreksi format. Izin API evaluasi
-terpisah dan default mati: maksimal lima request dengan 1.024 token output per
-request. Cache selalu diperiksa lebih dahulu. Pertanyaan, jawaban, atau konteks
-terkait dikirim ke provider bila API diizinkan. API key hanya dari environment
+API UI aktif otomatis sesuai instruksi pengguna: maksimal dua request generator
+per submit termasuk koreksi format, serta lima request evaluator per card dengan
+1.024 output token/request. Cache diperiksa dahulu; pertanyaan, klaim dan konteks
+dikirim ke provider saat cache kosong. Demo memakai jawaban tersimpan tetapi tetap
+menjalankan evaluasi otomatis. Batas total evaluator bergantung jumlah card.
+API key hanya dari environment
 atau `.env`; clone repo saja belum menyediakan model, PDF, database, dan cache.
 
 Jawaban baru dan diagnostik menulis salinan database tersendiri. Evaluasi RAGAS
@@ -62,10 +64,10 @@ Jangan menjalankan `uv sync` atau `uv run` pada environment CUDA lokal saat ini.
 
 ## Status dan batas hasil
 
-Integrasi KB penuh, jawaban bersitasi, PDF sumber, dan evaluasi RAGAS opsional
+Integrasi KB penuh, jawaban bersitasi, PDF sumber, dan evaluasi RAGAS per card
 sudah tersedia. Tes utama dan tes adapter RAGAS memakai provider mock; alur
-cache-only, worker terpisah, dan embedding lokal sudah diuji. Fitur evaluasi UI
-baru belum diuji dengan request API berbayar nyata. Akurasi manusia dan kualitas
+cache-only, worker terpisah, dan embedding lokal sudah diuji. Evaluasi otomatis
+diuji terbatas pada tiga card demo dengan API nyata. Akurasi manusia dan kualitas
 retrieval untuk seluruh jenis pertanyaan belum dibuktikan.
 
 Benchmark MVP empat paper dan hasil eksperimen terdahulu dipertahankan sebagai

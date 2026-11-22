@@ -26,8 +26,9 @@ kualitas; tiga TXT belum berpeta halaman. Sumber/lisensi belum terverifikasi
 ditampilkan sebagai label, sesuai izin pemrosesan lokal pengguna.
 
 Alur pengguna: pilih korpus, tanya, baca klaim dan sitasi, lalu buka halaman PDF.
-Jawaban tampil sebelum evaluasi Faithfulness dan Response Relevancy RAGAS yang
-dipicu pengguna. MiniCheck tersedia sebagai diagnostik opsional.
+Jawaban tampil lalu RAGAS otomatis menilai Faithfulness dan Response Relevancy
+di tiap card. API UI aktif otomatis/cache-first; pemakaian token ditampilkan.
+MiniCheck tersedia sebagai diagnostik opsional.
 
 | Bagian | Implementasi |
 |---|---|
@@ -50,7 +51,8 @@ dan RAGAS memiliki environment terpisah. Jangan `uv sync`/`uv run` pada `.venv` 
 - RAGAS menilai konteks/relevansi, bukan ketepatan setiap sitasi. Diagnosis MiniCheck
   menemukan kandidat false negative; agreement antar-AI bukan akurasi manusia.
 - Pengolahan sumber dan retrieval lokal; generation/evaluasi API dapat mengirim
-  pertanyaan, jawaban, dan konteks ke provider hanya dengan izin eksplisit.
+  pertanyaan, klaim, dan konteks ke provider. Pengguna mengizinkan API UI otomatis
+  pada 2026-11-22; batas request tetap berlaku dan CLI default cache-only.
 - Clone repo tidak menyertakan PDF, model, database, indeks, atau cache lokal.
 - Deployment production, autentikasi multi-user, scraping paywall, sinkronisasi
   Mendeley langsung, evidence map, dan fine-tuning belum menjadi scope aktif.

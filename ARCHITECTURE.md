@@ -25,8 +25,8 @@ Logika terpisah dari I/O; korpus/cache tetap lokal di `data/`, tidak di-commit.
 
 ## 3. Data flow
 
-Sumber ? admission ? parsing/gate ? chunking ? indexing. Query UI ? retrieval ?
-generation ? jawaban bersitasi; RAGAS dan MiniCheck dipicu terpisah setelah jawaban.
+Alur sumber: admission, parsing/gate, chunking, indexing. Alur query UI: retrieval,
+generation, jawaban bersitasi, RAGAS otomatis per card; MiniCheck tetap opsional.
 KB UI aktif hasil Docling, `configs/skripsi-local.yaml`: 41 PDF/40 searchable/2.514 chunk.
 CLI PyMuPDF, pilot lima PDF dan benchmark M6 tetap tersedia terpisah. Parsing tidak
 berjalan saat query. DeepSeek Flash non-thinking adalah generator; JEV masih eksperimen.
@@ -94,7 +94,7 @@ Retrieval membaca sumber/index; generation menulis run/answer/claim, verificatio
 menulis dukungan. Model tidak dimuat pada retrieval kosong/semua low-quality.
 Query UI memakai backup DB baru; demo baca-saja terikat hash seluruh chunk dan
 jawaban SQL. Alias bibliografi wajib cocok dengan sumber/seluruh korpus. Pergantian
-identitas/config mereset jawaban/izin. Snapshot DB UI menyalin delapan jawaban pilot
+identitas/config mereset jawaban/hasil evaluasi. Snapshot DB UI menyalin delapan jawaban pilot
 KB penuh; manifest mengikat asal/hash, indeks/chunk tetap KB penuh.
 
 Retrieval UI tetap empat mode produksi, default hybrid; helper refinement belum
@@ -292,8 +292,21 @@ generation termasuk tak disitasi, memeriksa hash DB/laporan/konteks/input/config
 serta kesamaan jawaban tampilan. Tiap evaluasi menghasilkan run baru di
 `paths.cache_dir/answer-quality/`, tanpa mengubah SQL/ID/sitasi/label/sumber.
 
-Worker RAGAS isolated S5 memakai CachedLLM/Judge: cache-first, izin API terpisah,
+UI mengevaluasi satu klaim per card, dengan `claim_id` yang wajib milik jawaban
+kanonis. Respons yang dinilai hanya teks klaim itu; pertanyaan dan seluruh konteks
+generation tetap. Input/hasil mengikat answer ID, claim ID dan hash; protokol
+`claim-quality-v1` terpisah dari `answer-quality-v1` untuk evaluasi jawaban utuh.
+UI mengaktifkan API generator/evaluator otomatis sesuai instruksi pengguna
+2026-11-22, tanpa checkbox izin. Hasil/marker percobaan per card disimpan sebelum
+worker dimulai sehingga rerun/PDF tidak mengulang evaluasi, termasuk gagal/partial.
+Submit baru atau perubahan jawaban/korpus mereset hasil sesi; cache provider tetap.
+
+Worker RAGAS isolated S5 memakai CachedLLM/Judge: cache-first, API aktif pada UI,
 maksimal lima request/1.024 output token per request, tanpa retry jaringan.
+Pada UI batas ini berlaku per card, maksimum lima kali jumlah card per jawaban.
+CLI dan fungsi dasar tetap cache-only kecuali `allow_api` eksplisit. Token panel
+menjumlahkan usage generator/evaluator yang diketahui, memisahkan cache hit dan
+usage unknown. Token generation demo historis tidak dihitung sebagai usage baru.
 Relevancy memakai embedding lokal pinned/offline melalui subprocess environment
 utama. Strictness tiga memakai cache prompt sama, bukan tiga sampel independen.
 Laporan mencatat config/model/backend/revision/library/kode/seed/traces/usage/hash
@@ -301,7 +314,10 @@ dan status evaluated/partial/failed; kegagalan null, bukan nol.
 
 Faithfulness menilai dukungan seluruh konteks, bukan per sitasi. Response Relevancy
 adalah cosine (-1 sampai 1) pertanyaan asli vs pertanyaan hasil judge, bukan
-kebenaran fakta. Context Recall tetap batch beracuan. MiniCheck opsional pada
+kebenaran fakta. Pada card, relevancy hanya menilai potongan jawaban terhadap
+pertanyaan; satu klaim tidak harus menjawab seluruh pertanyaan. Skor jawaban utuh
+tidak disalin ke card atau diperoleh dengan merata-ratakan skor card.
+Context Recall tetap batch beracuan. MiniCheck opsional pada
 snapshot DB baru dan tidak menahan jawaban. Skor AI bukan akurasi manusia.
 
 ## 9. Protokol evaluasi
@@ -347,7 +363,7 @@ Torch CUDA manual belum selaras lock; jangan sync environment utama. Docling/RAG
 
 ## 12. Keputusan aktif dan batas
 
-KB penuh Docling/Streamlit, DeepSeek Flash, RAGAS dan MiniCheck opsional tersedia.
+KB penuh Docling/Streamlit, DeepSeek Flash, RAGAS otomatis per card dan MiniCheck opsional tersedia.
 PyMuPDF baseline tetap. JEV belum dipromosikan. Korpus pengguna bukan seluruhnya OA;
 status lisensi adalah label pada jalur lokal berpolicy eksplisit.
 Parasuraman OCR belum searchable, tiga TXT belum berpeta halaman; gate/akurasi manusia

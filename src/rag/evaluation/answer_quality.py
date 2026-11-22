@@ -31,7 +31,22 @@ def _python(environment: Path) -> Path:
     return environment / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
 
 
-def prepare_quality(config: Config, answer_id: str, database: str | None = None) -> Path:
+def _response(generation: dict, claim_id: str | None) -> str:
+    if claim_id is None:
+        return "\n\n".join(claim["text"] for claim in generation["claims"])
+    claims = [claim for claim in generation["claims"] if claim["claim_id"] == claim_id]
+    if len(claims) != 1:
+        raise ValueError("Selected claim does not belong to the answer")
+    return claims[0]["text"]
+
+
+def prepare_quality(
+    config: Config,
+    answer_id: str,
+    database: str | None = None,
+    *,
+    claim_id: str | None = None,
+) -> Path:
     selected = replace(
         config, paths=replace(config.paths, db_path=database or config.paths.db_path)
     )
@@ -50,6 +65,7 @@ def prepare_quality(config: Config, answer_id: str, database: str | None = None)
     _validate_answer(selected, generation, stored[0])
     if generation["status"] != "ok" or not generation["claims"]:
         raise ValueError("Quality scores require a completed, nonempty answer")
+    response = _response(generation, claim_id)
     chunks, _ = _corpus(selected)
     context, _ = load_context([chunks[key] for key in generation["context_chunk_ids"]], selected)
     if (
@@ -76,8 +92,9 @@ def prepare_quality(config: Config, answer_id: str, database: str | None = None)
         yaml.safe_dump(asdict(selected), stream, sort_keys=False)
     payload = dict(
         answer_id=answer_id,
+        claim_id=claim_id,
         question=stored[0],
-        response="\n\n".join(claim["text"] for claim in generation["claims"]),
+        response=response,
         generation=generation,
         context=context,
         context_sha256=generation["context_sha256"],
@@ -114,6 +131,12 @@ def _inputs(directory: Path) -> tuple[dict, Config]:
     ):
         raise ValueError("Quality source changed after preparation")
     _validate_answer(config, item["generation"], item["question"])
+    if (
+        item["answer_id"] != item["generation"]["answer_id"]
+        or item["response"] != _response(item["generation"], item.get("claim_id"))
+        or item["context_sha256"] != item["generation"]["context_sha256"]
+    ):
+        raise ValueError("Evaluation scope differs from persisted generation")
     context, _ = load_context(item["context"], config)
     if (
         context != item["context"]
@@ -160,6 +183,7 @@ def score_quality(
     item, config = _inputs(directory)
     report = dict(
         answer_id=item["answer_id"],
+        claim_id=item.get("claim_id"),
         input_sha256=_file_hash(directory / "input.json"),
         context_sha256=item["context_sha256"],
         status="failed",
@@ -170,7 +194,7 @@ def score_quality(
         seed=config.verification.seed,
         human_accuracy=None,
         code_version=_code_version(),
-        protocol="answer-quality-v1",
+        protocol="claim-quality-v1" if item.get("claim_id") else "answer-quality-v1",
         embedding=asdict(config.embedding),
         response_relevancy_strictness=3,
         interpretation="AI estimates; all retrieved context; not citation accuracy or human truth",
@@ -229,14 +253,24 @@ def score_quality(
     return report
 
 
-def evaluate_answer_quality(config: Config, answer: dict, *, allow_api: bool = False) -> dict:
+def evaluate_answer_quality(
+    config: Config,
+    answer: dict,
+    *,
+    allow_api: bool = False,
+    claim_id: str | None = None,
+) -> dict:
     python = _python(ROOT / "data/skripsi/s5-ragas/.venv")
     if not python.is_file():
         raise ValueError("Environment RAGAS terpisah belum tersedia.")
-    directory = prepare_quality(config, answer["answer_id"], answer.get("database_path"))
+    directory = prepare_quality(
+        config, answer["answer_id"], answer.get("database_path"), claim_id=claim_id
+    )
     item = json.loads((directory / "input.json").read_text(encoding="utf-8"))
-    if item["question"] != answer["question"] or item["response"] != "\n\n".join(
-        claim["text"] for claim in answer["claims"]
+    if (
+        item["question"] != answer["question"]
+        or _response(item["generation"], None) != _response(answer, None)
+        or item["response"] != _response(answer, claim_id)
     ):
         raise ValueError("Displayed answer differs from persisted generation")
     command = [
@@ -266,8 +300,10 @@ def evaluate_answer_quality(config: Config, answer: dict, *, allow_api: bool = F
     if result.returncode:
         raise RuntimeError("Evaluasi gagal; jawaban tetap tersedia.")
     report = json.loads((directory / "result.json").read_text(encoding="utf-8"))
-    if report["answer_id"] != answer["answer_id"] or report["input_sha256"] != _file_hash(
-        directory / "input.json"
+    if (
+        report["answer_id"] != answer["answer_id"]
+        or report.get("claim_id") != claim_id
+        or report["input_sha256"] != _file_hash(directory / "input.json")
     ):
         raise ValueError("Evaluation result does not match the selected answer")
     report["directory"] = str(directory)

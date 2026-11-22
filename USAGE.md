@@ -19,39 +19,54 @@ tiga TXT belum berpeta halaman. Pemilih korpus menyediakan pilot lima PDF dan
 benchmark historis dengan config/receipt/demo yang cocok.
 
 1. Tulis pertanyaan dan pilih BM25, dense, hybrid (default), atau hybrid+rerank.
-2. Klik **Cari bukti**. Tanpa izin API, cache miss tetap menampilkan kutipan
-   retrieval sebagai bukti pencarian, bukan jawaban terverifikasi.
-3. Untuk jawaban baru, centang izin generator: maksimal dua request/submit,
-   termasuk koreksi format, atau batas config yang lebih kecil.
+2. Klik **Cari bukti**. API generator aktif otomatis saat cache kosong, maksimal
+   dua request/submit termasuk koreksi format, atau batas config yang lebih kecil.
+3. RAGAS otomatis mengevaluasi setiap card, tanpa tombol atau checkbox izin.
 4. Buka sitasi, **Lihat halaman PDF asli**, lalu **Unduh PDF sumber** bila diperlukan.
    Path/hash PDF diperiksa terhadap sumber kanonis; tidak mengunduh paper dari internet.
-5. **Evaluasi kualitas** menjalankan RAGAS opsional; **Diagnostik MiniCheck**
-   menjalankan verifier lokal opsional. Jawaban dapat dibaca tanpa keduanya.
+5. Buka **Penggunaan token** untuk rincian input/output generator, evaluator dan
+   total tercatat. **Diagnostik MiniCheck** tetap lokal dan opsional.
 
-**Demo tersimpan** membuka delapan jawaban pilot KB penuh tanpa API/inference.
+**Demo tersimpan** membuka delapan jawaban pilot tanpa generator baru; evaluasi
+RAGAS tetap otomatis dan dapat memakai API jika cache skor kosong.
 Konteks demo adalah refinement eksperimental yang dibekukan saat pilot, bukan
 retrieval ulang form. Helper refinement belum menjadi mode produksi.
 
 Query/diagnostik menulis salinan database tersendiri, bukan sumber. Perubahan
-jawaban/korpus mereset hasil dan izin terkait. Receipt bibliografi/demo wajib
+jawaban/korpus mereset hasil evaluasi sesi. Receipt bibliografi/demo wajib
 cocok dengan hash seluruh snapshot; jangan memasangkan laporan S3 dengan subset Docling.
 DB UI dan manifest lokal ada di `data/skripsi/ui-local/2026-11-21T08-16-45Z_07d296/`;
 indeks/PDF berasal dari KB penuh. Clone repo tidak menyertakan artefak lokal ini.
 
 ### Evaluasi dan arti status
 
-Izin API evaluasi terpisah, default mati; cache-first, maksimal lima request/
-1.024 output token per request, tanpa retry jaringan. Bila diizinkan, pertanyaan,
-jawaban dan konteks dikirim ke judge. RAGAS berjalan di environment S5 isolated;
+Setiap card berisi satu klaim dan metrik Faithfulness/Response Relevancy. Evaluasi
+berjalan otomatis sekali per card dalam sesi jawaban yang sama, termasuk pada
+demo. Membuka PDF/sitasi atau rerun biasa tidak mengulang evaluasi, termasuk hasil
+gagal/partial. Submit baru atau berganti jawaban/korpus memulai sesi hasil baru;
+cache provider tetap dipakai. Catatan evaluasi dibuka dari **Catatan jawaban**.
+
+API evaluasi aktif otomatis, cache-first, maksimal lima request per card/1.024
+output token per request, tanpa retry jaringan. Menilai banyak card menambah
+batas biaya total: maksimum request evaluasi adalah lima kali jumlah card. Pertanyaan,
+klaim card dan seluruh konteks dikirim ke judge. RAGAS berjalan di environment S5 isolated;
 embedding pertanyaan lokal/pinned/offline melalui environment utama.
 
+**Penggunaan token** memisahkan generator, RAGAS dan total input/output tercatat;
+request API/cache hit ditampilkan sebagai ringkasan. Cache hit tidak menambah
+token API baru. Usage gagal/hilang tidak dianggap lengkap; demo tidak menghitung
+token generation historis sebagai pemakaian baru. Rincian metrik ada di
+**Tentang skor RAGAS**, agar card tetap ringkas.
+
 Laporan baru `paths.cache_dir/answer-quality/` mengikat jawaban kanonis, seluruh
-konteks generation termasuk tak disitasi, hash, config/model/seed/traces/usage.
+konteks generation termasuk tak disitasi, claim ID, hash, config/model/seed/traces/usage.
 Folder memuat teks korpus dan tidak untuk dibagikan/di-commit. Kegagalan/cache miss
 menjadi **Belum tersedia** (null), bukan nol; jawaban tetap terbaca.
 
-Faithfulness menilai dukungan konteks, Response Relevancy memakai cosine (-1 sampai 1)
-pertanyaan asli vs pertanyaan hasil judge. Keduanya estimasi AI, bukan jaminan fakta
+Faithfulness menilai klaim card terhadap seluruh konteks. Response Relevancy memakai
+cosine (-1 sampai 1) pertanyaan asli vs pertanyaan hasil judge dari klaim card.
+Ini relevansi potongan jawaban; satu card belum tentu menjawab seluruh pertanyaan.
+Skor jawaban utuh tidak disalin ke tiap card. Keduanya estimasi AI, bukan jaminan fakta
 atau ketepatan tiap sitasi. Context Recall hanya batch dengan jawaban acuan.
 
 | Label MiniCheck | Arti |
@@ -104,7 +119,7 @@ Jangan menaruh key dalam YAML, command, log atau Git.
 | JEV Surplus | `SURPLUS_API_KEY`, `SURPLUS_API_URL`, `JEV_MODEL_ID=jev-1.14` |
 
 Surplus memakai HTTPS `https://api.surplusintelligence.ai/v1`; JEV juga menerima
-`/v1/decisions`. Membuat `.env` tidak mengaktifkan API. CLI default cache-only;
+`/v1/decisions`. CLI default cache-only meski `.env` tersedia; UI memakai API otomatis.
 `--allow-api` membutuhkan izin dan batas konkret. Setelah crash, inspeksi
 receipt/marker/journal/cache lalu replay tanpa API. Batch lama M6/S5/pilot sudah
 selesai; jangan mengulang paid, mereset marker atau memakai sisa jatah.
@@ -295,6 +310,7 @@ untuk mengatasi cache miss atau mereset marker. Agreement bukan akurasi manusia.
 | Model/cache offline belum ada | Periksa model/revision; cache miss bukan keluaran model |
 | Hash/config/indeks berbeda | Gunakan snapshot baru; jangan hapus/rebuild sumber otomatis |
 | Input overlength | Chunk lebih kecil pada snapshot baru atau tetap held/unverified; tanpa truncation |
-| Cache LLM miss | Periksa backend/model/config; API membutuhkan izin/budget baru |
+| Cache LLM miss | UI otomatis memakai API berbatas; CLI tetap memerlukan `--allow-api`/izin batch |
 | CUDA/OOM/konversi parsial | Catat kegagalan dan pertahankan artefak; partial bukan build sukses |
 | Bibliografi/demo UI tidak cocok | Gunakan config/receipt/demo dari snapshot yang sama |
+| `unexpected keyword argument 'claim_id'` setelah update | Restart proses Streamlit, lalu refresh browser; proses lama dapat menyimpan modul evaluator sebelum update |

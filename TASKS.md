@@ -140,3 +140,11 @@ Korpus skripsi, Docling, UI KB penuh dan RAGAS opsional kemudian dikembangkan
 terpisah; seluruh status dan bukti lanjutan diringkas di [TASKS-SKRIPSI.md](TASKS-SKRIPSI.md).
 Target awal 100-500 paper bukan syarat korpus pengguna. Backlog production,
 GROBID, evidence map, fine-tuning dan multi-user tetap ditunda tanpa kebutuhan/izin baru.
+
+2026-11-22: UI skripsi menampilkan RAGAS per card klaim dengan input/hasil terikat
+claim ID; 596 test utama + 15 RAGAS isolated lulus, Ruff bersih, nol API baru.
+Smoke KB nyata dan batas visual tercatat di TASKS-SKRIPSI bagian RAGAS per card.
+
+Lanjutan 2026-11-22: API UI dan RAGAS per card kini otomatis, dengan panel token.
+598+15 test/Ruff lulus. Smoke tiga card memakai 9 request GPT; kesalahan mock harness,
+receipt/usage dan replay tanpa API dicatat pada TASKS-SKRIPSI, tanpa mengubah hasil lama.

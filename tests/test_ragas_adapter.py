@@ -191,7 +191,8 @@ def test_real_relevancy_uses_local_vectors_and_preserves_cosine_range(tmp_path, 
     assert len(traces) == 3 and backend.calls == 1
 
 
-def test_single_answer_quality_scores_and_cache_replay(prepared, monkeypatch):
+@pytest.mark.parametrize("per_claim", [False, True])
+def test_single_answer_quality_scores_and_cache_replay(prepared, monkeypatch, per_claim):
     from rag.evaluation.answer_quality import prepare_quality, score_quality
 
     directory = prepared[2]
@@ -200,26 +201,34 @@ def test_single_answer_quality_scores_and_cache_replay(prepared, monkeypatch):
         config, paths=replace(config.paths, cache_dir=str(directory / "quality-cache"))
     )
     sample = json.loads((directory / "samples.json").read_text())[0]["generation"]
+    claim_id = sample["claims"][0]["claim_id"] if per_claim else None
     backend = StructuredBackend()
 
     def vectors(texts):
         return [[1.0, 0.0] for _ in texts]
 
     first = score_quality(
-        prepare_quality(config, sample["answer_id"]), backend=backend, embed_texts=vectors
+        prepare_quality(config, sample["answer_id"], claim_id=claim_id),
+        backend=backend,
+        embed_texts=vectors,
     )
     assert first["status"] == "evaluated"
     assert first["scores"] == dict(faithfulness=1.0, response_relevancy=1.0)
+    assert first["claim_id"] == claim_id
+    assert first["protocol"] == ("claim-quality-v1" if per_claim else "answer-quality-v1")
     calls = backend.calls
     replay = score_quality(
-        prepare_quality(config, sample["answer_id"]), backend=backend, embed_texts=vectors
+        prepare_quality(config, sample["answer_id"], claim_id=claim_id),
+        backend=backend,
+        embed_texts=vectors,
     )
     assert replay["scores"] == first["scores"]
     assert replay["usage"]["backend_calls"] == 0 and backend.calls == calls
     assert first["human_accuracy"] is None
 
 
-def test_single_answer_cache_miss_remains_unknown_without_api(prepared):
+@pytest.mark.parametrize("per_claim", [False, True])
+def test_single_answer_cache_miss_remains_unknown_without_api(prepared, per_claim):
     from rag.evaluation.answer_quality import prepare_quality, score_quality
 
     directory = prepared[2]
@@ -228,7 +237,9 @@ def test_single_answer_cache_miss_remains_unknown_without_api(prepared):
         config, paths=replace(config.paths, cache_dir=str(directory / "quality-cache"))
     )
     sample = json.loads((directory / "samples.json").read_text())[0]["generation"]
-    report = score_quality(prepare_quality(config, sample["answer_id"]))
+    claim_id = sample["claims"][0]["claim_id"] if per_claim else None
+    report = score_quality(prepare_quality(config, sample["answer_id"], claim_id=claim_id))
     assert report["status"] == "failed"
     assert all(value is None for value in report["scores"].values())
     assert report["usage"]["backend_calls"] == 0
+    assert report["claim_id"] == claim_id

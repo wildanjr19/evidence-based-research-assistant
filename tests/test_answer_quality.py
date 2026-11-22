@@ -38,6 +38,59 @@ def test_prepare_uses_all_generation_context_and_keeps_source_readonly(sample):
     assert Path(config.paths.db_path).read_bytes() == before
 
 
+def test_claim_evaluation_uses_only_selected_response_and_all_context(sample):
+    config, _, _ = sample
+    chunks, _ = quality._corpus(config)
+    generation = generate_answer(
+        "Compare Alpha and Beta",
+        [chunks[FIRST], chunks[SECOND]],
+        config,
+        FakeLLM(
+            [
+                completion(
+                    [
+                        dict(text="Alpha result.", citations=[FIRST]),
+                        dict(text="Beta result.", citations=[SECOND]),
+                    ]
+                )
+            ]
+        ),
+    )
+    before = Path(config.paths.db_path).read_bytes()
+    for claim in generation["claims"]:
+        directory = quality.prepare_quality(
+            config, generation["answer_id"], claim_id=claim["claim_id"]
+        )
+        payload, _ = quality._inputs(directory)
+        assert payload["claim_id"] == claim["claim_id"]
+        assert payload["response"] == claim["text"]
+        assert len(payload["context"]) == len(generation["context_chunk_ids"])
+        assert payload["context_sha256"] == generation["context_sha256"]
+    assert Path(config.paths.db_path).read_bytes() == before
+
+
+def test_foreign_claim_is_rejected_before_artifacts_are_created(sample):
+    config, generation, _ = sample
+    with pytest.raises(ValueError, match="does not belong"):
+        quality.prepare_quality(config, generation["answer_id"], claim_id="foreign")
+    assert not list(Path(config.paths.cache_dir).rglob("input.json"))
+
+
+def test_claim_scope_cannot_be_reassigned_even_with_refrozen_input(sample):
+    config, generation, _ = sample
+    directory = quality.prepare_quality(
+        config, generation["answer_id"], claim_id=generation["claims"][0]["claim_id"]
+    )
+    payload = json.loads((directory / "input.json").read_text())
+    payload["response"] = "A different card"
+    (directory / "input.json").write_text(json.dumps(payload))
+    manifest = json.loads((directory / "manifest.json").read_text())
+    manifest["input_sha256"] = quality._file_hash(directory / "input.json")
+    (directory / "manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match="scope differs"):
+        quality._inputs(directory)
+
+
 @pytest.mark.parametrize("target", ["input.json", "config.yaml"])
 def test_changed_prepared_input_is_rejected(sample, target):
     config, generation, _ = sample
@@ -65,13 +118,17 @@ def test_no_claims_has_no_quality_score(sample):
 
 
 @pytest.mark.parametrize("allow_api", [False, True])
-def test_parent_uses_isolated_worker_and_binds_result(sample, tmp_path, monkeypatch, allow_api):
+@pytest.mark.parametrize("per_claim", [False, True])
+def test_parent_uses_isolated_worker_and_binds_result(
+    sample, tmp_path, monkeypatch, allow_api, per_claim
+):
     config, _, answer = sample
     monkeypatch.setattr(quality, "ROOT", tmp_path)
     python = quality._python(tmp_path / "data/skripsi/s5-ragas/.venv")
     python.parent.mkdir(parents=True)
     python.write_bytes(b"fixture")
     calls = []
+    claim_id = answer["claims"][0]["claim_id"] if per_claim else None
 
     def worker(command, **kwargs):
         calls.append(command)
@@ -80,6 +137,7 @@ def test_parent_uses_isolated_worker_and_binds_result(sample, tmp_path, monkeypa
             directory / "result.json",
             dict(
                 answer_id=answer["answer_id"],
+                claim_id=claim_id,
                 input_sha256=quality._file_hash(directory / "input.json"),
                 status="evaluated",
                 scores=dict(faithfulness=1.0, response_relevancy=0.8),
@@ -88,10 +146,12 @@ def test_parent_uses_isolated_worker_and_binds_result(sample, tmp_path, monkeypa
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr(quality.subprocess, "run", worker)
-    report = quality.evaluate_answer_quality(config, answer, allow_api=allow_api)
+    report = quality.evaluate_answer_quality(config, answer, allow_api=allow_api, claim_id=claim_id)
     assert report["status"] == "evaluated" and len(calls) == 1
     assert calls[0][0] == str(python)
     assert ("--allow-api" in calls[0]) is allow_api
+    payload = json.loads((Path(report["directory"]) / "input.json").read_text())
+    assert payload["claim_id"] == claim_id
 
 
 def test_displayed_answer_tampering_never_starts_worker(sample, tmp_path, monkeypatch):
@@ -103,6 +163,30 @@ def test_displayed_answer_tampering_never_starts_worker(sample, tmp_path, monkey
     answer["claims"][0]["text"] = "Changed display"
     with pytest.raises(ValueError, match="Displayed answer"):
         quality.evaluate_answer_quality(config, answer)
+
+
+def test_worker_result_for_another_card_is_rejected(sample, tmp_path, monkeypatch):
+    config, _, answer = sample
+    monkeypatch.setattr(quality, "ROOT", tmp_path)
+    python = quality._python(tmp_path / "data/skripsi/s5-ragas/.venv")
+    python.parent.mkdir(parents=True)
+    python.write_bytes(b"fixture")
+
+    def worker(command, **kwargs):
+        directory = Path(command[command.index("--directory") + 1])
+        quality._write(
+            directory / "result.json",
+            dict(
+                answer_id=answer["answer_id"],
+                claim_id="another-card",
+                input_sha256=quality._file_hash(directory / "input.json"),
+            ),
+        )
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(quality.subprocess, "run", worker)
+    with pytest.raises(ValueError, match="does not match"):
+        quality.evaluate_answer_quality(config, answer, claim_id=answer["claims"][0]["claim_id"])
 
 
 def test_embedding_bridge_has_no_paid_api_flag(tmp_path, monkeypatch):
