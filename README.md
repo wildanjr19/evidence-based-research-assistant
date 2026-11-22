@@ -82,7 +82,8 @@ Untuk menyiapkan environment dan menjalankan pipeline, ikuti [panduan penggunaan
 | [USAGE.md](USAGE.md) | Setup, perintah pipeline, dan batas penggunaan |
 | [OVERVIEW.md](OVERVIEW.md) | Tujuan, ruang lingkup, pilihan stack, dan batasan proyek |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Arsitektur, skema data, format sitasi, dan protokol evaluasi |
-| [TASKS.md](TASKS.md) | Milestone, acceptance criteria, hasil verifikasi, dan handoff |
-| [TASKS-SKRIPSI.md](TASKS-SKRIPSI.md) | Scope dan tahapan korpus referensi skripsi |
+| [TASKS.md](TASKS.md) | Ringkasan milestone dan bukti benchmark MVP |
+| [TASKS-SKRIPSI.md](TASKS-SKRIPSI.md) | Status aktif, keputusan, hasil dan indeks artefak skripsi |
+| [KB-PREPARATION.md](KB-PREPARATION.md) | Alur admission, parsing, gate kualitas dan chunking KB |
 | [DESIGN.md](DESIGN.md) | Sistem desain visual UI |
 | [AGENTS.md](AGENTS.md) | Aturan kerja untuk AI coding agent |

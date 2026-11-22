@@ -1,144 +1,106 @@
-# ARCHITECTURE.md
+# Arsitektur dan kontrak teknis
 
-Kontrak teknis aktif. Skema SQL (bagian 4), ID (5), dan sitasi (6) tetap; perubahan memerlukan persetujuan eksplisit.
-Tujuan: [OVERVIEW.md](OVERVIEW.md). Operasi: [USAGE.md](USAGE.md). Aturan agent: [AGENTS.md](AGENTS.md).
-Riwayat keputusan/hasil: [TASKS-SKRIPSI.md](TASKS-SKRIPSI.md) dan [TASKS.md](TASKS.md).
+Skema SQL (4), ID (5) dan sitasi (6) tetap; perubahan memerlukan persetujuan eksplisit.
+Operasi: [USAGE.md](USAGE.md). Persiapan: [KB-PREPARATION.md](KB-PREPARATION.md).
+Status/hasil: [TASKS-SKRIPSI.md](TASKS-SKRIPSI.md); MVP: [TASKS.md](TASKS.md).
 
 ## 1. Prinsip
 
-- Jawaban hanya dari chunk hasil retrieval; setiap klaim ditautkan ke bukti kanonis.
-- Persiapan korpus terpisah dari query. Hash/versi/lisensi/halaman PDF asli dapat ditelusuri.
-- Logika terpisah dari I/O. Parameter dari config; model/revision dan seed dicatat.
-- Snapshot/laporan baru tidak menimpa hasil lama. Label tidak berpindah hanya karena string ID sama.
-- Penahanan blok terjadi sebelum chunk searchable ditulis; peringatan UI saja tidak cukup.
+Jawaban hanya dari chunk hasil retrieval, dengan sitasi per klaim ke bukti kanonis.
+Persiapan korpus terpisah dari query; hash/versi/sumber/lisensi/halaman dapat ditelusuri.
+Blok held dikeluarkan sebelum SQL/index. Eksperimen memakai snapshot/run baru dan
+config/hash/model/revision/seed; label tidak berpindah karena string ID sama.
+Logika terpisah dari I/O; korpus/cache tetap lokal di `data/`, tidak di-commit.
 
 ## 2. Peta modul
 
-| Modul | Tanggung jawab |
+| Modul di `src/rag/` | Tanggung jawab |
 |---|---|
-| `config.py`, `ids.py`, `files.py` | Config bertipe, kontrak ID, penulisan atomik |
-| `ingestion/` | Bibliografi, metadata/lisensi, unduhan berbudget, admission snapshot |
-| `parsing/`, `chunking/` | PyMuPDF aktif; adapter Docling opt-in, gate, dan chunk tabel |
-| `indexing/` | Embedding/cache, LanceDB, SQLite FTS5 |
-| `retrieval/` | Dense/BM25, RRF, reranker |
-| `generation/`, `verification/` | JSON klaim/sitasi, cache provider, MiniCheck/judge |
-| `evaluation/`, `ui/` | Evaluasi/reproduksi dan Streamlit |
-
-Alur sumber: ingestion, parsing, chunking, indexing. Alur query UI: retrieval,
-generation, jawaban bersitasi; evaluasi kualitas dan diagnostik verifier dipicu terpisah.
-Evaluation boleh mengorkestrasi modul-modul tersebut. Storage korpus/cache di `data/`, tidak di-commit.
+| `config.py`, `ids.py`, `files.py` | Config tervalidasi, ID dan penulisan atomik |
+| `ingestion/` | Bibliografi, metadata/lisensi, budget unduhan dan admission |
+| `parsing/`, `chunking/` | PyMuPDF baseline; Docling, gate dan chunk narasi/tabel |
+| `indexing/`, `retrieval/` | BGE/cache, LanceDB/FTS5, BM25/dense/RRF/reranker |
+| `generation/`, `verification/` | Klaim/sitasi JSON, provider/cache, MiniCheck/judge |
+| `evaluation/`, `ui/` | Orkestrasi evaluasi/reproduksi dan Streamlit |
 
 ## 3. Data flow
 
-Korpus referensi skripsi terpisah dari benchmark M6; koleksi lokal dapat memakai
-status lisensi belum terverifikasi sesuai policy eksplisit pengguna.
-UI utama memakai KB lokal penuh hasil Docling, melalui `configs/skripsi-local.yaml`:
-41 PDF terdaftar/40 searchable, 2.514 chunk. PyMuPDF/pilot lima PDF dan benchmark
-historis tetap tersedia sebagai korpus terpisah. CLI parser baseline PyMuPDF tidak
-diganti; parsing tidak berjalan saat query. Generator/verifier DeepSeek Flash
-non-thinking; RAGAS dan MiniCheck opsional setelah jawaban. JEV `jev-1.14` masih eksperimen.
-Status/cakupan terbaru ada di TASKS-SKRIPSI.md.
+Sumber ? admission ? parsing/gate ? chunking ? indexing. Query UI ? retrieval ?
+generation ? jawaban bersitasi; RAGAS dan MiniCheck dipicu terpisah setelah jawaban.
+KB UI aktif hasil Docling, `configs/skripsi-local.yaml`: 41 PDF/40 searchable/2.514 chunk.
+CLI PyMuPDF, pilot lima PDF dan benchmark M6 tetap tersedia terpisah. Parsing tidak
+berjalan saat query. DeepSeek Flash non-thinking adalah generator; JEV masih eksperimen.
 
-### Persiapan korpus
+### Admission
 
-1. `import-bib` menyimpan entries/references/audit tanpa menulis paper/chunk. DOI identik dapat dikelompokkan;
-   konflik tetap tercatat. Bibliografi bukan bukti full text.
-2. Downloader memeriksa metadata Crossref, identitas PDF, dan lisensi pada sumber yang disetujui.
-   HTTPS/host/redirect/ukuran/cache diverifikasi; ledger persisten menghitung request gagal/redirect sebelum transfer.
-   Default tanpa jaringan, lock mencegah pemakaian budget paralel; ledger tidak direset otomatis.
-3. `prepare-bib` memeriksa provenance/hash/halaman/lisensi PDF siap lalu mendaftarkan snapshot.
-   DOI lowercase memakai source ID `<DOI>_sha256_<SHA-256 PDF>` dalam namespace `crossref`.
-   DOI di luar alfabet ID ditolak. Alias citation key/reference ID disimpan pada laporan prepare.
-4. Parsing/chunking menyimpan artefak berhash dan memperbarui `parse_status`; input/config berbeda ditolak.
-5. Indexing serial memeriksa seluruh chunk, batas tokenizer nyata, metadata/vector/FTS dan jumlah yang sama.
-   Tidak ada transaksi lintas LanceDB/SQLite; run parsial belum sukses sampai konsistensi lengkap.
+`import-bib` menghasilkan entries/references/audit, tanpa paper/chunk. Downloader
+lama memeriksa identitas/lisensi, host/HTTPS/redirect/ukuran/cache dan ledger persisten
+sebelum transfer; default tanpa jaringan, lock mencegah budget paralel. `prepare-bib`
+mengikat hash/provenance PDF siap ke snapshot dan alias citation key.
 
-Sitasi selalu halaman PDF 1-indexed. PDF asli tidak diubah. Folder pengguna harus diinventaris sebelum admission;
-Admission opt-in `prepare-local` default maksimal tiga PDF, atau batch dengan
-`--max-documents` eksplisit di bawah batas config, selalu ke database baru.
-Identitas mengikat metadata bibliografi ke HTML artikel, DOI tercetak di PDF,
-atau receipt snapshot terdahulu dengan hash PDF/reference ID sama. Bukti lisensi
-berasal dari artikel penerbit/PDF (satu/dua halaman berurutan) atau receipt tersebut;
-pernyataan lisensi dataset tidak membuktikan lisensi artikel.
-DOI bibliografi yang kosong dapat dilengkapi dari artikel penerbit tanpa mengubah
-bibliografi asal; DOI yang sudah ada wajib cocok. `fetched_at` merekam observasi lokal,
-dibedakan eksplisit dari receipt unduhan pada laporan. Parsing/indexing tidak berjalan saat query.
-Konversi dipisah menjadi batch serial maksimal tiga PDF; raw cache hanya digunakan
-jika hash PDF/model/backend cocok. Build KB gabungan menyimpan origin/hash tiap
-run, menghitung ulang gate/chunk, serta memeriksa indeks pada database baru.
+`prepare-local` wajib inventaris, manifest berhash dan DB baru; default maksimal tiga
+PDF, batch memakai `--max-documents` eksplisit di bawah batas config. Jalur default
+memerlukan identitas/lisensi artikel dari HTML, DOI tercetak, halaman PDF atau receipt
+snapshot sama. DOI baru boleh melengkapi field kosong, DOI lama harus cocok.
+`fetched_at` adalah observasi lokal. Lisensi dataset bukan lisensi artikel.
 
-### Koleksi lokal pengguna
-
-Instruksi pengguna 2026-11-20 mengizinkan seluruh PDF yang disediakan diproses lokal
-meski DOI/lisensi belum terverifikasi. `prepare-local --local-collection` memerlukan
-`admission_policy: user_local_collection` dalam manifest; mode default tetap ketat.
-Hash PDF, halaman, batas ukuran/path, bibliografi dan database baru tetap diperiksa.
-Rekaman yang sudah terverifikasi memakai identitas lama. Rekaman belum terverifikasi
-memakai namespace `local` dengan source ID `sha256_<hash-PDF>`, mengikuti format
-`<source>:<source_id>` yang sama; DOI opsional, tidak dibuat-buat. Skema SQL/sitasi tetap.
-Lisensi disimpan sebagai `LicenseRef-UserProvided-Unverified`, landing URL menunjuk
-file asli lokal; ini bukan lisensi publik atau izin redistribusi. Pernyataan lisensi
-yang baru diduga tetap di manifest, tidak dipromosikan sebagai verifikasi.
-Config snapshot lokal secara eksplisit menerima penanda tersebut; downloader/default
-tidak berubah. Receipt admission mengikat citation key/reference ID/hash untuk UI.
-Kualitas parsing tetap diperiksa sebelum indexing. Pada build koleksi lokal saja,
-PDF tanpa chunk lolos tetap terdaftar dengan `parse_status=held`; bukan bukti searchable.
-UI menampilkan lisensi belum diverifikasi, sumber lokal tanpa tautan daring, dan
-paper yang belum memiliki chunk. Ketiadaan tautan bukan pengujian paywall/HTTP.
+Instruksi pengguna 2026-11-20 mengizinkan `--local-collection` dengan manifest
+`admission_policy: user_local_collection`. Hash/path/ukuran/halaman tetap diperiksa.
+Identitas terverifikasi dipertahankan; sisanya `local:sha256_<hash-PDF>` dan
+`LicenseRef-UserProvided-Unverified`, DOI opsional, landing URL file lokal.
+Ini bukan klaim OA/izin redistribusi dan tidak melonggarkan downloader. Receipt
+mengikat reference ID/citation key/hash untuk UI. PDF tanpa chunk lolos tetap
+terdaftar `parse_status=held` pada koleksi lokal, bukan bukti searchable.
 
 ### Parser dan chunker
 
-PyMuPDF mengurutkan baris/dua kolom, menormalkan Unicode, membuang margin berulang, dan mendeteksi section secara heuristik.
-Artefak `ParsedPaper`/`TextBlock` mencatat halaman/section dan manifest PDF/parser/config/hash dokumen.
-Chunker narasi menjaga section/ordinal global; `lexical-v1` bukan tokenizer embedding.
-Ekor pendek mengikuti `merge`/`drop`, jumlah yang dibuang dilaporkan. Flag baseline `low_quality` menandai karakter rusak.
+PyMuPDF menata baris/dua kolom, Unicode, margin berulang dan section heuristik.
+`ParsedPaper`/`TextBlock` mengikat halaman/section dan manifest PDF/parser/config/hash.
+Chunk narasi memakai ordinal global; `lexical-v1` bukan tokenizer model. Ekor
+`merge`/`drop` dilaporkan, `low_quality` menandai karakter rusak baseline.
 
-Docling memasok callback batas tokenizer pada jendela narasi: ujung jendela dipendekkan
-di batas token leksikal sampai muat; overlap dibatasi agar selalu maju. Merge ekor
-tidak boleh melampaui batas model. Unit tunggal yang tidak muat tetap dilaporkan held.
-Tanpa callback, perilaku chunker PyMuPDF lama tetap. Anggaran baris/header tabel tidak berubah.
+Docling isolated memakai Heron/TableFormer accurate/EasyOCR id/en CUDA, batch satu,
+model pinned/offline, OCR selektif, `do_cell_matching=True`. Extract maksimal tiga
+PDF lengkap terdaftar; opsi subclass Pydantic diserialisasi lengkap. JSON/Markdown/
+HTML/native comparison disimpan. Build Python utama memeriksa hash sumber dan
+menghitung ulang gate; ekstraksi gagal tidak boleh menjadi subset sukses diam-diam.
+Raw hanya dipakai ulang jika hash PDF/model/backend cocok; build gabungan mencatat asal.
 
-Docling terisolasi memakai Heron/TableFormer accurate/EasyOCR id/en CUDA, batch satu, model lokal pinned,
-OCR selektif, tanpa remote services. `parsing.docling_pipeline extract/build` dibatasi tiga PDF lengkap terdaftar.
-JSON/Markdown/HTML/native comparison dan keputusan blok disimpan dalam run baru; build memakai Python utama dan menghitung ulang gate.
+- Halaman asli eksplisit; gambar/rumus/kode dan tipe belum didukung bukan bukti.
+- Narasi dicek terhadap region native; overlap tabel tidak lolos sebagai teks rata.
+- Tabel wajib caption/header/label baris/grid utuh, token native berurutan dan geometri
+  benar. Minus/desimal/tanda baca dipertahankan; `-` identik bukan mismatch.
+- Header bertingkat `parent / child`, rowspan label hanya kolom pertama dengan flag
+  eksplisit; row-section satu baris penuh. Span tumpang tindih, body berlubang,
+  header ambigu, sel lintas baris tak dideklarasikan dan band baris overlap ditahan.
+- Caption/header/catatan/halaman dan konteks kelompok diulang; pipe/newline/quote
+  di-escape sebagai string JSON. Baris+konteks overlength menahan seluruh tabel.
+- Narasi Docling memakai callback tokenizer: jendela leksikal dipendekkan agar muat,
+  overlap selalu maju dan merge ekor tetap berbatas; unit tunggal overlength held.
+  Tanpa callback, chunker PyMuPDF lama tetap. Jangan mencampur artefak kedua chunker.
+- `native_word_coverage=0.8`, `header_center_tolerance=0.25` (pitch subheader terkecil)
+  masih heuristik, bukan kalibrasi manusia. OCR tanpa pembanding/native rusak tetap held.
+  Tidak wajib koreksi manual seluruh paper; tidak ada voting/per-table switching otomatis.
 
-- Blok membutuhkan halaman PDF asli eksplisit. Rumus/gambar/kode dan tipe yang belum didukung tidak menjadi bukti.
-- Narasi diperiksa terhadap region native; teks overlap tabel tidak boleh melewati gate sebagai tabel rata.
-- Tabel membutuhkan caption, header tiap kolom, label baris, grid body lengkap, serta token native cocok berurutan.
-  Minus/desimal/tanda baca dipertahankan; `-` identik bukan mismatch.
-- Header bertingkat menjadi `parent / child`; rowspan label hanya kolom pertama dengan flag eksplisit.
-  Row-section harus satu baris penuh. Span tumpang tindih, body berlubang, header ambigu, dan sel melintasi baris tak dideklarasikan ditahan.
-- Caption/header/catatan/halaman diulang per chunk; konteks kelompok diulang per baris.
-  Pipe/newline/quote di-escape sebagai string JSON dalam sel. Baris utuh beserta konteks yang tidak muat menahan seluruh tabel.
-- `QualityPolicy`: `native_word_coverage=0.8`, `header_center_tolerance=0.25` (proporsi pitch subheader terkecil).
-  Keduanya heuristik awal, bukan kalibrasi manusia; header tak terpusat bisa ikut ditahan.
-  OCR tanpa pembanding native dan native rusak belum dibuka otomatis. Tidak wajib mengoreksi seluruh paper manual.
+### Indexing dan UI
 
-Band vertikal sel satu baris tidak boleh bertumpang tindih dengan band baris berikutnya,
-termasuk antar kolom. Kecocokan teks native saja dapat meloloskan crop yang sudah salah
-gabung baris; tabel demikian ditahan. Pemeriksaan ini konservatif, termasuk untuk panel sejajar.
+Embedding BGE float32 ternormalisasi/revision pinned, dokumen tanpa prefix; tokenizer
+termasuk special tokens dicek tanpa truncation. Cache membedakan model/revision/
+dimensi/batas/normalisasi/prefix dan menolak file rusak. LanceDB mengikat hash/metadata;
+FTS5 `chunk_fts(chunk_id UNINDEXED, text)` memakai `unicode61 remove_diacritics 2`.
+SQL/vektor/FTS harus konsisten; tidak ada transaksi lintas store, run parsial belum sukses.
 
-`do_cell_matching` boolean dari config backend, default true; tidak ada voting/per-table switching otomatis.
-Opsi efektif menyertakan subclass Pydantic lengkap. Eksperimen halaman lama `evaluation.docling` terpisah dari build penuh.
+Retrieval membaca sumber/index; generation menulis run/answer/claim, verification
+menulis dukungan. Model tidak dimuat pada retrieval kosong/semua low-quality.
+Query UI memakai backup DB baru; demo baca-saja terikat hash seluruh chunk dan
+jawaban SQL. Alias bibliografi wajib cocok dengan sumber/seluruh korpus. Pergantian
+identitas/config mereset jawaban/izin. Snapshot DB UI menyalin delapan jawaban pilot
+KB penuh; manifest mengikat asal/hash, indeks/chunk tetap KB penuh.
 
-### Indexing dan query
-
-Embedding dokumen BGE float32 ternormalisasi, revision pinned, tanpa prefix. Tokenizer termasuk special tokens diperiksa tanpa truncation.
-Cache teks membedakan model/revision/dimensi/batas/normalisasi/prefix; file rusak ditolak. LanceDB menyimpan hash/metadata chunk.
-FTS5 memakai `chunk_fts(chunk_id UNINDEXED, text)`, tokenizer `unicode61 remove_diacritics 2`.
-Retrieval membaca SQLite/index tanpa menulis sumber. Generation hanya menulis run/answer/claim; verification menyimpan dukungan.
-Model tidak dimuat bila retrieval kosong/semua low-quality. UI query memakai backup SQLite baru; demo baca-saja.
-Alias bibliografi wajib cocok dengan hash sumber/seluruh korpus. Perubahan identitas/config mereset jawaban/izin; judge tidak dipanggil UI.
-
-Default UI memilih KB penuh dan form tanya; pemilih korpus mengikat config,
-receipt dan demo yang sesuai. Database UI baru menyalin snapshot pilot generation
-KB penuh beserta delapan jawaban tersimpan; indeks/chunk tetap dari KB penuh.
-Demo diikat hash seluruh chunk, bukan string ID saja. Asal/hash snapshot disimpan
-pada manifest lokal UI. Retrieval form tetap empat mode produksi yang ada,
-default hybrid mengikuti config; helper refinement pilot tidak dipromosikan.
-Saat generation cache miss, kutipan retrieval tetap ditampilkan sebagai bukti
-pencarian, bukan klaim jawaban. Preview/unduh PDF membaca berkas dalam raw/pdf
-dengan nama paper kanonis dan hash cocok SQL; halaman PDF asli dirender lokal.
+Retrieval UI tetap empat mode produksi, default hybrid; helper refinement belum
+dipromosikan. Cache miss generation tetap memperlihatkan bukti pencarian, bukan
+klaim jawaban. Preview/unduh PDF hanya dari raw/pdf dengan nama kanonis, path aman,
+hash SQL cocok dan halaman asli. Sumber lokal/unverified/held diberi label eksplisit.
 
 ## 4. Skema data (SQLite)
 
@@ -278,70 +240,69 @@ Cache pasangan mengikat model, query/dokumen, batas dan truncation; skor wajib f
 
 ## 8. Generation dan verifikasi
 
-Prompt berisi grounding, pertanyaan, serta chunk yang cocok dengan SQL; isi pengguna/chunk adalah data tak tepercaya.
-Provider generator `deepseek`/`openai`; DeepSeek Flash non-thinking dipilih untuk runtime. Cache membedakan thinking/backend/provider,
-endpoint/model/parameter/prompt/checksum. Mock memakai identitas lain. Respons/model/finish reason/usage dicatat; unknown bukan nol.
-Default cache-only; `--allow-api` dan batas batch diperlukan untuk request baru. Retry transport nol; satu retry format generation
-memakai konteks sama dan ikut jatah. Respons salah setelah itu gagal tanpa klaim parsial; kegagalan/cache miss bukan abstention.
-Endpoint generation kustom wajib HTTPS tanpa credential/query/fragment. Key dari environment/`.env` provider terpilih, tidak dimutasi/log.
+Prompt memuat grounding, pertanyaan dan chunk yang cocok SQL; isi pengguna/chunk
+adalah data tak tepercaya. Provider generator DeepSeek/OpenAI; runtime DeepSeek Flash
+non-thinking. Cache mengikat thinking/backend/provider/endpoint/model/parameter/
+prompt/checksum, mock memakai identitas lain. Respons/model/finish reason/usage dicatat;
+usage unknown bukan nol. Default cache-only; API membutuhkan izin/budget. Retry
+transport nol; satu koreksi format dengan konteks sama ikut jatah. Respons tetap
+salah gagal tanpa klaim parsial; error/cache miss bukan abstention. Endpoint kustom
+wajib HTTPS tanpa credential/query/fragment; key environment/`.env` tidak dilog.
 
-MiniCheck `lytang/MiniCheck-Flan-T5-Large` menilai pasangan utuh dan probabilitas supported dengan threshold config.
-Input overlength tetap unverified tanpa truncation. Error/unknown tidak menjadi supported; klaim tetap disimpan.
-Cache verifier mengikat klaim/evidence, model/revision/adapter/device/batas/threshold/backend; baris hasil append-only.
+MiniCheck `lytang/MiniCheck-Flan-T5-Large` menilai pasangan utuh dengan threshold
+config. Overlength unverified tanpa truncation; error bukan supported. Cache
+mengikat klaim/evidence/model/revision/adapter/device/batas/threshold/backend;
+hasil append-only, klaim tetap disimpan.
 
-Judge generatif memakai keluarga berbeda dari generator dan seed untuk sampel klaim bersitasi. Label/alasan divalidasi.
-`surplus-chat`: `SURPLUS_API_KEY`, `SURPLUS_API_URL`, `GPT_MODEL_ID`, endpoint HTTPS Surplus `/v1` dengan host/model tervalidasi.
-`surplus`: JEV native `/v1/decisions`, model eksplisit `jev-1.14`, tanpa retry/redirect otomatis atau alias rolling.
-JEV menyimpan probabilitas, model aktual, confidence/usage/latensi; rationale null. Confidence bukan ambang terkalibrasi.
-Pasangan pembandingan memakai teks/hash sama. Judge/agreement terpisah dari metrik utama MiniCheck.
+Judge memakai keluarga berbeda dari generator, sampel berseed, label/alasan tervalidasi.
+`surplus-chat` memakai `SURPLUS_API_KEY`, `SURPLUS_API_URL`, `GPT_MODEL_ID`, HTTPS
+Surplus `/v1` dan host/model tervalidasi. JEV native `surplus` `/v1/decisions` wajib
+`jev-1.14`, tanpa rolling alias/retry/redirect. Probabilitas/model aktual/confidence/
+usage/latensi disimpan, rationale null; confidence belum terkalibrasi. Pasangan
+pembanding harus sama teks/hash. Agreement judge terpisah dari metrik MiniCheck.
 
 ### Kebijakan pelaporan verifier
 
-Status UI merangkum hasil mesin, bukan kebenaran faktual atau label manusia.
-`ui.service.support_label` menerapkan urutan berikut pada setiap klaim:
+`ui.service.support_label` merangkum keputusan mesin sesuai prioritas berikut:
 
-| Kondisi | Status UI | Makna |
-|---|---|---|
-| `unsupported: true` atau sitasi kosong | Tidak ada bukti | Klaim tidak memenuhi kontrak bukti jawaban; bukan pernyataan bahwa bukti tidak ada di seluruh korpus |
-| Semua sitasi `supported` oleh MiniCheck | Didukung MiniCheck | Semua pasangan tersitasi diterima model; bukan jaminan fakta benar |
-| Ada sitasi `not_supported` atau `partially_supported` | Perlu diperiksa | Baca kutipan dan halaman PDF; penolakan model tidak membuktikan fakta salah |
-| Kondisi lain, termasuk hasil hilang/error | Belum diverifikasi | Dukungan seluruh sitasi belum diketahui; bukan penolakan atau abstention |
+| Kondisi | Status UI |
+|---|---|
+| Unsupported atau sitasi kosong | Tidak ada bukti |
+| Semua sitasi supported MiniCheck | Didukung MiniCheck |
+| Ada sitasi not_supported/partially_supported, meski lainnya belum dinilai | Perlu diperiksa |
+| Kondisi lain, termasuk hasil hilang/error | Belum diverifikasi |
 
-Penolakan/partial tetap menghasilkan "Perlu diperiksa" bila sitasi lain belum dinilai.
-Hasil judge/manual atau hasil klaim lain tidak mengganti ringkasan MiniCheck.
-Audit sumber dilaporkan terpisah dengan identitas pemeriksa (AI/manusia), chunk,
-halaman, hash sumber, alasan, dan batas pemeriksaan. Audit AI bukan label manusia.
-Konflik angka antarhalaman tetap dicatat; jangan memilih angka untuk memperbaiki skor.
-Label/probabilitas asli dipertahankan. Terjemahan, pelemahan atribusi, serialisasi,
-atau pemilihan skor view tertinggi belum boleh mengganti hasil kanonis.
+Label bukan vonis kebenaran. "Tidak ada bukti" hanya kontrak klaim/konteks, bukan
+seluruh korpus. Penolakan model bukan bukti fakta salah; hasil hilang bukan penolakan.
+Judge/manual/klaim lain tidak menimpa ringkasan MiniCheck. Audit sumber terpisah
+mencatat AI/manusia, chunk/halaman/hash/alasan/batas. Audit AI bukan label manusia.
+Konflik angka dicatat tanpa memilih angka agar skor membaik; label/probabilitas asli
+tetap. Terjemahan, pelemahan atribusi, serialisasi atau view berskor tertinggi belum
+boleh mengganti hasil kanonis.
 
-Ringkasan UI memerlukan semua sitasi supported, sedangkan citation recall/faithfulness
-implementasi pada bagian 9 memerlukan sedikitnya satu sitasi supported per klaim.
-Laporkan keduanya sesuai denominator; jangan menyamakan label UI dengan metrik tersebut.
-Nol klaim tanpa konteks dan penolakan provider dengan konteks dilaporkan terpisah.
-Cache miss/error generation tetap kegagalan, bukan abstention atau bukti korpus kosong.
+UI memerlukan semua sitasi supported; citation recall/faithfulness implementasi
+memerlukan sedikitnya satu per klaim (bagian 9). Denominator harus dibedakan.
+Nol klaim tanpa konteks dan penolakan provider berkonteks dilaporkan terpisah;
+cache miss/error generation adalah kegagalan.
 
 ### Evaluasi kualitas jawaban di UI
 
-`evaluation/answer_quality.py` membekukan jawaban kanonis dan seluruh konteks generation,
-termasuk chunk yang tidak disitasi. Hash database, laporan generation, konteks, input,
-dan config diperiksa sebelum scoring. Jawaban UI juga harus cocok dengan jawaban tersimpan.
-Setiap evaluasi membuat artefak baru di `paths.cache_dir/answer-quality/`; tidak mengubah
-SQL, ID, sitasi, label lama, atau database sumber.
+`evaluation/answer_quality.py` membekukan jawaban kanonis dan seluruh konteks
+generation termasuk tak disitasi, memeriksa hash DB/laporan/konteks/input/config
+serta kesamaan jawaban tampilan. Tiap evaluasi menghasilkan run baru di
+`paths.cache_dir/answer-quality/`, tanpa mengubah SQL/ID/sitasi/label/sumber.
 
-Worker RAGAS berjalan pada environment isolated S5. Adapter menggunakan CachedLLM/Judge
-yang sama: cache-first, izin API eksplisit terpisah, maksimal lima request dan 1.024
-token output/request, tanpa retry jaringan. Relevancy menggunakan embedding lokal
-pinned melalui subprocess environment utama dengan model offline. Strictness tiga
-memakai cache prompt yang sama; jangan menganggapnya tiga sampel independen.
-Laporan menyimpan config/model/backend/revision, versi library/kode, seed, traces,
-usage, hash, dan status evaluated/partial/failed. Kegagalan tetap null, bukan nol.
+Worker RAGAS isolated S5 memakai CachedLLM/Judge: cache-first, izin API terpisah,
+maksimal lima request/1.024 output token per request, tanpa retry jaringan.
+Relevancy memakai embedding lokal pinned/offline melalui subprocess environment
+utama. Strictness tiga memakai cache prompt sama, bukan tiga sampel independen.
+Laporan mencatat config/model/backend/revision/library/kode/seed/traces/usage/hash
+dan status evaluated/partial/failed; kegagalan null, bukan nol.
 
-Faithfulness mengukur dukungan konteks terhadap jawaban, bukan ketepatan per sitasi.
-Response Relevancy membandingkan pertanyaan asli dengan pertanyaan hasil judge melalui
-cosine (-1 sampai 1), bukan mengukur kebenaran fakta. Context Recall tetap batch dengan
-acuan. MiniCheck menjadi diagnostik opsional pada snapshot database baru, tanpa
-menahan penyajian jawaban. Tidak ada promosi hasil AI menjadi akurasi manusia.
+Faithfulness menilai dukungan seluruh konteks, bukan per sitasi. Response Relevancy
+adalah cosine (-1 sampai 1) pertanyaan asli vs pertanyaan hasil judge, bukan
+kebenaran fakta. Context Recall tetap batch beracuan. MiniCheck opsional pada
+snapshot DB baru dan tidak menahan jawaban. Skor AI bukan akurasi manusia.
 
 ## 9. Protokol evaluasi
 
@@ -370,27 +331,25 @@ skor subset dan coverage dipisahkan. Batas byte/token/panggilan keras, tanpa ret
 
 ## 10. Reproducibility dan biaya
 
-Simpan snapshot/config/hash byte dataset/PDF/chunk, model/revision/library, seed, code version, waktu, backend, cache hit, dan token.
-Laporan selalu run baru; jangan menimpa hasil atau mengekspor full text korpus ke laporan publik `eval/`.
-Budget request/token keras, kegagalan dihitung, SDK tanpa retry transport. Ledger downloader dan marker/receipt berbayar
-bertahan lintas crash; replay cache tidak mengizinkan batch baru. Biaya mata uang unknown tidak dianggap gratis.
+Simpan hash byte dataset/PDF/chunk, snapshot/config, model/revision/library, seed,
+code version, waktu/backend/cache hit/token. Laporan selalu run baru; jangan
+mengekspor full text korpus ke laporan publik `eval/`. Budget request/token keras;
+gagal/retry ikut jatah, SDK tanpa retry transport. Ledger/marker/receipt bertahan
+lintas crash; replay cache bukan izin batch baru. Biaya unknown bukan gratis.
 
 ## 11. Konfigurasi
 
-`config.py` memvalidasi ingestion, parsing, chunking, embedding, retrieval, generation, verification, evaluation, dan paths.
-Field tidak dikenal/null/nilai tidak valid ditolak; default kompatibilitas masuk config efektif.
-Contoh lengkap: [configs/skripsi-pilot.yaml](configs/skripsi-pilot.yaml). CLI Docling memakai config backend terpisah.
-Model embedding/reranker/MiniCheck memakai revision commit pinned; model baru tidak boleh memakai ruang vektor lama.
-Device CPU/CUDA eksplisit, tanpa fallback diam-diam. Torch CUDA manual belum selaras dengan lock utama; jangan sync environment ini.
+`config.py` memvalidasi seluruh tahap dan paths; field unknown/null/invalid ditolak,
+default kompatibilitas masuk config efektif. Config UI: `configs/skripsi-local.yaml`,
+pilot: `configs/skripsi-pilot.yaml`, backend Docling terpisah. Model baru tidak
+memakai ruang vektor lama. Device CPU/CUDA eksplisit tanpa fallback diam-diam.
+Torch CUDA manual belum selaras lock; jangan sync environment utama. Docling/RAGAS isolated.
 
 ## 12. Keputusan aktif dan batas
 
-Storage SQLite + LanceDB/FTS5; UI Streamlit memakai KB lokal penuh Docling.
-CLI parser baseline PyMuPDF dan jalur Docling terisolasi tetap; runtime DeepSeek,
-evaluasi RAGAS dan diagnostik MiniCheck opsional.
-Arah korpus referensi skripsi open access; target lama arXiv saja/100-500 paper sudah digantikan. Agreement saja tidak mempromosikan JEV.
-Input lokal `data/reference-skripsi/` berisi 41 PDF + 3 TXT; audit awal 746 halaman tersedia.
-Admission/lisensi batch, uji scan asli, kalibrasi gate, dan validasi manusia masih terbuka.
-Native Indonesia sudah diuji pada pilot lokal terbatas; enam smoke query bukan evaluasi bahasa yang disetujui.
-Tidak wajib koreksi manual seluruh paper. Tabel tertahan tidak menjadi bukti searchable; narasi valid tetap boleh dipakai.
-Riwayat/keputusan yang sudah digantikan ada pada kedua file TASKS, bukan instruksi aktif di sini.
+KB penuh Docling/Streamlit, DeepSeek Flash, RAGAS dan MiniCheck opsional tersedia.
+PyMuPDF baseline tetap. JEV belum dipromosikan. Korpus pengguna bukan seluruhnya OA;
+status lisensi adalah label pada jalur lokal berpolicy eksplisit.
+Parasuraman OCR belum searchable, tiga TXT belum berpeta halaman; gate/akurasi manusia
+belum dikalibrasi, bahasa Indonesia baru diuji terbatas. Tabel held bukan bukti,
+narasi valid tetap boleh dipakai. Riwayat dan hasil rinci ada di kedua TASKS.
