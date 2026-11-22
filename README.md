@@ -1,11 +1,12 @@
 # Evidence-Based Research Assistant
 
-A research assistant that answers questions about scientific literature using a local
-knowledge base, with citations that lead back to the source passage and PDF page.
+A personal research tool built to support my undergraduate thesis and literature
+review. It helps me search my reference collection, compare findings, and trace
+answers back to the original passages and PDF pages.
 
-Built for literature reviews and thesis research, the application combines local
-retrieval with API-based answer generation and evaluation. Each answer is presented
-as individual claim cards, with supporting evidence and automatic RAGAS scores.
+The application combines local retrieval with API-based generation and evaluation.
+Answers appear as claim cards with supporting evidence and automatic RAGAS scores,
+helping me review the literature while keeping research decisions in my hands.
 
 ## Use cases
 
@@ -16,7 +17,7 @@ as individual claim cards, with supporting evidence and automatic RAGAS scores.
 
 ## Goals
 
-1. Ground answers in retrieved evidence from the selected knowledge base.
+1. Support my thesis research with answers grounded in my reference collection.
 2. Make each claim traceable to a document, passage, and original PDF page.
 3. Preserve table context and exclude ambiguous extractions before indexing.
 4. Measure retrieval and answer quality while keeping model scores distinct from human validation.
@@ -57,22 +58,22 @@ reads an existing knowledge base; it does not search the web for answer content.
 ```mermaid
 flowchart TD
     subgraph Preparation[Knowledge base preparation]
-        A[PDF collection and BibTeX references] --> B[Inventory and source metadata]
-        B --> C[Docling parsing and selective OCR]
-        C --> D[Text and table quality checks]
-        D --> E[Page-aware narrative and table chunks]
-        E --> F[Local embeddings, vector index, and keyword index]
+        A["PDF collection<br/>and BibTeX references"] --> B["Inventory and<br/>source metadata"]
+        B --> C["Docling parsing<br/>and selective OCR"]
+        C --> D["Text and table<br/>quality checks"]
+        D --> E["Page-aware narrative<br/>and table chunks"]
+        E --> F["Local embeddings,<br/>vector index, and<br/>keyword index"]
     end
     subgraph Query[Question answering]
-        Q[Research question] --> R[BM25, dense, or hybrid retrieval]
+        Q["Research question"] --> R["BM25, dense, or<br/>hybrid retrieval"]
         F --> R
-        R --> S[Optional reranking]
-        S --> T[Retrieved evidence context]
-        T --> U[DeepSeek claim generation]
-        U --> V[Citation validation]
-        V --> W[Claim cards and source passages]
-        W --> X[Automatic RAGAS evaluation per card]
-        W --> Y[Original PDF page inspection]
+        R --> S["Optional reranking"]
+        S --> T["Retrieved evidence<br/>context"]
+        T --> U["DeepSeek<br/>claim generation"]
+        U --> V["Citation validation"]
+        V --> W["Claim cards and<br/>source passages"]
+        W --> X["Automatic RAGAS<br/>evaluation per card"]
+        W --> Y["Original PDF<br/>page inspection"]
     end
 ```
 
@@ -107,55 +108,3 @@ that pass quality checks; three text files lack PDF page mappings and are not in
 Source and license status remain visible, including unverified user-provided sources.
 The collection is not presented as entirely open access. PDFs, extracted text, model
 files, indexes, and API caches are excluded from this repository.
-
-## Run locally
-
-The launch command assumes the Python environments, model files, and local knowledge
-base have already been prepared. Cloning this repository alone does not provide them.
-The default configuration points to local corpus snapshots.
-
-Set provider credentials through environment variables or a local `.env` file using
-[.env.example](.env.example). The current setup uses `DEEPSEEK_API_KEY` for generation
-and `SURPLUS_API_KEY`, `SURPLUS_API_URL`, and `GPT_MODEL_ID` for evaluation.
-
-From the repository root on Windows:
-
-```powershell
-.venv/Scripts/python.exe -m streamlit run src/rag/ui/app.py --server.address 127.0.0.1
-```
-
-Open [localhost:8501](http://127.0.0.1:8501), select a corpus, and submit a question.
-The default corpus is configured in [skripsi-local.yaml](configs/skripsi-local.yaml).
-Saved examples reuse existing answers and automatically evaluate their claim cards.
-
-The UI uses paid APIs automatically when the required response is not cached.
-Questions, claims, and retrieved context may be sent to the configured providers.
-Generation is limited to two requests per submission, including format correction;
-evaluation is limited to five requests per card with 1,024 output tokens per request.
-Opening a citation or PDF does not repeat evaluation within the same answer session.
-CLI commands remain cache-only unless API access is explicitly enabled.
-
-The existing CUDA environment uses a manually installed PyTorch build. Do not run
-`uv sync` or `uv run` against that environment until its CUDA source and lockfile
-have been reconciled.
-
-## Development and validation
-
-Runtime dependencies are declared in [pyproject.toml](pyproject.toml). Run checks
-from the repository root:
-
-```powershell
-.venv/Scripts/python.exe -m pytest -q
-.venv/Scripts/python.exe -m ruff check .
-.venv/Scripts/python.exe -m ruff format --check .
-```
-
-Recorded validation on November 22, 2026: **598 main-suite tests** and **15 isolated
-RAGAS adapter tests** passed. One optional RAGAS module is skipped in the main
-environment. Tests use mocked providers. Three saved cards were also evaluated
-through the real API and replayed from cache; human accuracy has not been established.
-
-A separate four-paper MVP benchmark is retained in the
-[M6 evaluation results](eval/results/2026-11-19T01-25-11Z_7492c6/metrics.json).
-Its results do not establish accuracy on the full research collection. Multilingual
-retrieval, complex tables, and general answer quality still require broader validation.
