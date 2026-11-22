@@ -59,7 +59,6 @@ atau `.env`; clone repo saja belum menyediakan model, PDF, database, dan cache.
 Jawaban baru dan diagnostik menulis salinan database tersendiri. Evaluasi RAGAS
 menyimpan artefak baru yang mengikat jawaban, seluruh konteks generation, config,
 model, hash, dan usage. Kegagalan evaluasi tidak menghalangi pembacaan jawaban.
-Panduan setup, batas biaya, dan troubleshooting ada di [USAGE.md](USAGE.md).
 Jangan menjalankan `uv sync` atau `uv run` pada environment CUDA lokal saat ini.
 
 ## Status dan batas hasil
@@ -71,21 +70,25 @@ diuji terbatas pada tiga card demo dengan API nyata. Akurasi manusia dan kualita
 retrieval untuk seluruh jenis pertanyaan belum dibuktikan.
 
 Benchmark MVP empat paper dan hasil eksperimen terdahulu dipertahankan sebagai
-riwayat terpisah, termasuk [laporan M6](eval/results/2026-11-19T01-25-11Z_7492c6/m6-summary.md).
-Status pekerjaan aktif ada di [TASKS-SKRIPSI.md](TASKS-SKRIPSI.md); riwayat benchmark
-ada di [TASKS.md](TASKS.md).
+riwayat terpisah. [Metrik M6](eval/results/2026-11-19T01-25-11Z_7492c6/metrics.json)
+tersedia untuk pemeriksaan hasil benchmark kecil tersebut; hasilnya tidak
+mewakili akurasi manusia pada KB skripsi penuh.
 
-## Mulai dan dokumentasi
+## Pengembangan
 
-Untuk menyiapkan environment dan menjalankan pipeline, ikuti [panduan penggunaan](USAGE.md). Catatan environment CUDA ada di bagian setup panduan tersebut.
+Python 3.11+; dependensi utama ada di [pyproject.toml](pyproject.toml).
+Docling dan RAGAS memakai environment terpisah dengan lockfile
+[Docling](eval/docling-requirements.lock) dan [RAGAS](eval/ragas-requirements.lock).
+Keduanya tidak dipasang ke environment CUDA utama.
 
-| Dokumen | Isi |
-|---|---|
-| [USAGE.md](USAGE.md) | Setup, perintah pipeline, dan batas penggunaan |
-| [OVERVIEW.md](OVERVIEW.md) | Tujuan, ruang lingkup, pilihan stack, dan batasan proyek |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Arsitektur, skema data, format sitasi, dan protokol evaluasi |
-| [TASKS.md](TASKS.md) | Ringkasan milestone dan bukti benchmark MVP |
-| [TASKS-SKRIPSI.md](TASKS-SKRIPSI.md) | Status aktif, keputusan, hasil dan indeks artefak skripsi |
-| [KB-PREPARATION.md](KB-PREPARATION.md) | Alur admission, parsing, gate kualitas dan chunking KB |
-| [DESIGN.md](DESIGN.md) | Sistem desain visual UI |
-| [AGENTS.md](AGENTS.md) | Aturan kerja untuk AI coding agent |
+Jalankan pemeriksaan dari root repo:
+
+```powershell
+.venv/Scripts/python.exe -m pytest -q
+.venv/Scripts/python.exe -m ruff check .
+.venv/Scripts/python.exe -m ruff format --check .
+```
+
+Verifikasi terakhir: 598 test utama dan 15 test adapter RAGAS isolated lulus;
+satu modul RAGAS dilewati di environment utama. Test menggunakan mock provider.
+Dokumentasi kerja dan laporan Markdown tambahan dipertahankan secara lokal.

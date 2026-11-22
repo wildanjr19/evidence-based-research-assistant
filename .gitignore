@@ -6,6 +6,10 @@ data/
 # Ekspor Mendeley pengguna memuat abstrak korpus.
 reference-skripsi.bib
 
+# Dokumentasi kerja dan laporan Markdown tetap lokal.
+*.md
+!/README.md
+
 # Secret
 .env
 .env.*
