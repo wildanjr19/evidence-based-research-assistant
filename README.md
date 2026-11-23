@@ -27,7 +27,8 @@ helping me review the literature while keeping research decisions in my hands.
 
 | Component | Technology or model | Role |
 |---|---|---|
-| Application | Python 3.11+, Streamlit | Local research interface, claim cards, PDF inspection, and token usage |
+| Frontend | React, TypeScript, Vite | Local evidence reader in `frontend/`, claim cards, citations, and PDF inspection |
+| Backend | Python 3.11+, local HTTP adapter | Existing RAG services, bounded API calls, evaluation, and token usage; Streamlit remains available |
 | Reference import | BibTeX, `bibtexparser` | Import and audit Mendeley reference exports |
 | Document parsing | Docling 2.151.1, Heron, TableFormer accurate | Extract document layout, narrative text, and structured tables |
 | OCR | EasyOCR, Indonesian and English | Extract text from scanned regions |
@@ -108,3 +109,34 @@ that pass quality checks; three text files lack PDF page mappings and are not in
 Source and license status remain visible, including unverified user-provided sources.
 The collection is not presented as entirely open access. PDFs, extracted text, model
 files, indexes, and API caches are excluded from this repository.
+
+## Run locally
+
+With Python dependencies and the local knowledge base already prepared, build the
+frontend using Node.js 24 or later:
+
+```powershell
+npm --prefix frontend ci
+npm --prefix frontend run build
+.venv/Scripts/python.exe -m rag.ui.web
+```
+
+Open [Bukti Riset](http://127.0.0.1:8765). For frontend development, keep the Python
+server running and use `npm --prefix frontend run dev` in another terminal; Vite
+serves the interface at [localhost:5173](http://127.0.0.1:5173) and proxies the local API.
+The server binds to loopback only. It requires the matching local corpus, receipt,
+indexes, model caches, and provider keys; these are not included in a clone.
+
+Submitting a question enables cache-first generation, at most two requests per
+submit. Each claim is evaluated automatically, at most five evaluator requests per
+claim. Reading source passages and opening PDFs do not repeat evaluation. Reloading
+the page restores the current in-memory session; restarting the server clears it.
+
+```powershell
+npm --prefix frontend test
+npm --prefix frontend run lint
+npm --prefix frontend run typecheck
+.venv/Scripts/python.exe -m pytest -q
+.venv/Scripts/python.exe -m ruff check .
+.venv/Scripts/python.exe -m ruff format --check .
+```
