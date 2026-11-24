@@ -4,6 +4,7 @@ import math
 import sqlite3
 import sys
 from dataclasses import replace
+from importlib.util import find_spec
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -68,13 +69,13 @@ class FakeReranker:
 @pytest.fixture(autouse=True)
 def forbid_network(monkeypatch: pytest.MonkeyPatch) -> None:
     import httpx
-    import requests
 
     def forbidden(*args: object, **kwargs: object) -> None:
         raise AssertionError("Retrieval tests must not use the network or download models")
 
     monkeypatch.setattr(httpx.Client, "send", forbidden)
-    monkeypatch.setattr(requests.sessions.Session, "send", forbidden)
+    if find_spec("requests") is not None:
+        monkeypatch.setattr("requests.sessions.Session.send", forbidden)
     monkeypatch.setattr("rag.retrieval.pipeline.SentenceEmbedder", forbidden)
     monkeypatch.setattr("rag.retrieval.rerank.BGEReranker", forbidden)
 

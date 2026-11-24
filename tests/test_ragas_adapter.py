@@ -1,6 +1,7 @@
 import json
 import os
 from dataclasses import replace
+from importlib.util import find_spec
 from types import SimpleNamespace
 
 import pytest
@@ -19,14 +20,14 @@ from test_ragas import prepared as prepared
 def no_network(monkeypatch: pytest.MonkeyPatch) -> None:
     import httpx
     import httpx2
-    import requests
 
     def forbidden(*args: object, **kwargs: object) -> None:
         raise AssertionError("Ragas integration tests must never access the network")
 
     monkeypatch.setattr(httpx.Client, "send", forbidden)
     monkeypatch.setattr(httpx2.Client, "send", forbidden)
-    monkeypatch.setattr(requests.sessions.Session, "send", forbidden)
+    if find_spec("requests") is not None:
+        monkeypatch.setattr("requests.sessions.Session.send", forbidden)
 
 
 class StructuredBackend:

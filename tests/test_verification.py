@@ -2,6 +2,7 @@ import json
 import sqlite3
 import sys
 from dataclasses import replace
+from importlib.util import find_spec
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -25,14 +26,14 @@ from test_generation import corpus as corpus
 def no_network(monkeypatch: pytest.MonkeyPatch) -> None:
     import httpx
     import httpx2
-    import requests
 
     def forbidden(*args: object, **kwargs: object) -> None:
         raise AssertionError("Verification tests cannot download models or call paid APIs")
 
     monkeypatch.setattr(httpx.Client, "send", forbidden)
     monkeypatch.setattr(httpx2.Client, "send", forbidden)
-    monkeypatch.setattr(requests.sessions.Session, "send", forbidden)
+    if find_spec("requests") is not None:
+        monkeypatch.setattr("requests.sessions.Session.send", forbidden)
 
 
 class FakeSupport:

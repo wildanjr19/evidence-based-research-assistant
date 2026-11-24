@@ -2,10 +2,10 @@ import hashlib
 import json
 import sqlite3
 from dataclasses import replace
+from importlib.util import find_spec
 from pathlib import Path
 
 import pytest
-from streamlit.testing.v1 import AppTest
 
 from rag.generation.client import Completion, LLMError, OpenAIBackend
 from rag.indexing.embedding import text_hash
@@ -22,28 +22,14 @@ from test_verification import FakeSupport
 def no_network(monkeypatch: pytest.MonkeyPatch) -> None:
     import httpx
     import httpx2
-    import requests
 
     def forbidden(*args: object, **kwargs: object) -> None:
         raise AssertionError("UI tests must not download models or call paid APIs")
 
     monkeypatch.setattr(httpx.Client, "send", forbidden)
     monkeypatch.setattr(httpx2.Client, "send", forbidden)
-    monkeypatch.setattr(requests.sessions.Session, "send", forbidden)
-    monkeypatch.setattr(
-        "rag.ui.app.evaluate_answer_quality",
-        lambda *args, **kwargs: dict(
-            status="evaluated",
-            scores=dict(faithfulness=0.9, response_relevancy=0.8),
-            usage=dict(
-                backend_calls=1,
-                cache_hits=0,
-                input_tokens=200,
-                output_tokens=30,
-                unknown_usage_attempts=0,
-            ),
-        ),
-    )
+    if find_spec("requests") is not None:
+        monkeypatch.setattr("requests.sessions.Session.send", forbidden)
 
 
 @pytest.fixture
@@ -221,51 +207,6 @@ def test_query_verifies_cached_answer_and_preserves_unknown(
     )
 
 
-def launch_app(demo_dir: str) -> None:
-    from rag.ui.app import main
-
-    main(demo_dir=demo_dir)
-
-
-def launch_default_app() -> None:
-    from rag.ui.app import main
-
-    main()
-
-
-def test_default_corpus_query_and_switch_reset_answer(demo, monkeypatch):
-    config, directory, generation = demo
-    monkeypatch.setattr(
-        "rag.ui.app.CORPORA",
-        {
-            "Full corpus": ("full", str(directory), None),
-            "Pilot corpus": ("pilot", str(directory), None),
-        },
-    )
-    monkeypatch.setattr(
-        "rag.ui.app.load_config",
-        lambda path: (
-            config
-            if path == "full"
-            else replace(config, generation=replace(config.generation, model="different-model"))
-        ),
-    )
-    monkeypatch.setattr(
-        "rag.ui.app.run_question",
-        lambda *args, **kwargs: service.load_answer(config, generation["answer_id"]),
-    )
-    app = AppTest.from_function(launch_default_app).run()
-    assert not app.exception
-    assert app.selectbox[0].value == "Full corpus"
-    assert app.radio[0].value == "Tanya korpus"
-    app.text_area[0].set_value("Compare the evidence.")
-    app.button[0].click().run()
-    assert any("Klaim 1" in m.value for m in app.markdown)
-    app.selectbox[0].set_value("Pilot corpus").run()
-    assert not app.exception
-    assert not any("Klaim 1" in m.value for m in app.markdown)
-
-
 def test_pdf_preview_uses_admitted_hash_and_original_page(corpus):
     import pymupdf
 
@@ -317,107 +258,6 @@ def test_query_skips_minicheck_until_requested(corpus, monkeypatch):
     assert answer["status"] == "ok" and answer["verification"] == []
 
 
-def test_quality_runs_automatically_per_card_and_not_on_rerun(demo, monkeypatch):
-    calls = []
-
-    def evaluate(config, answer, *, allow_api=False, claim_id=None):
-        calls.append((claim_id, allow_api))
-        first = claim_id == answer["claims"][0]["claim_id"]
-        return dict(
-            status="evaluated",
-            scores=dict(
-                faithfulness=0.9 if first else 0.2, response_relevancy=0.8 if first else 0.3
-            ),
-        )
-
-    monkeypatch.setattr("rag.ui.app.evaluate_answer_quality", evaluate)
-    app = app_test(demo, monkeypatch)
-    assert not calls
-    app.selectbox[0].select(0).run()
-    first, second = [claim["claim_id"] for claim in demo[2]["claims"]]
-    assert not app.exception and calls == [(first, True), (second, True)]
-    assert [m.value for m in app.metric] == ["0.900", "0.800", "0.200", "0.300"]
-    assert not any("Izinkan API" in checkbox.label for checkbox in app.checkbox)
-    app.run()
-    assert len(calls) == 2
-    app.checkbox(key="pdf_claim_1_1").check().run()
-    assert not app.exception and len(calls) == 2
-    app.selectbox[0].select(1).run()
-    assert not app.metric
-    assert len(calls) == 2
-    app.selectbox[0].select(0).run()
-    assert len(calls) == 4
-    assert [m.value for m in app.metric] == ["0.900", "0.800", "0.200", "0.300"]
-
-
-def test_quality_failure_keeps_answer_and_unknown_scores(demo, monkeypatch):
-    calls = []
-
-    def fail(*args, **kwargs):
-        calls.append(kwargs["claim_id"])
-        raise RuntimeError("fixture evaluator failure")
-
-    monkeypatch.setattr("rag.ui.app.evaluate_answer_quality", fail)
-    app = app_test(demo, monkeypatch)
-    app.selectbox[0].select(0).run()
-    assert not app.exception
-    assert [m.value for m in app.metric] == ["Belum tersedia"] * 4
-    assert any("<script>" in t.value for t in app.text)
-    assert any("belum lengkap" in warning.value for warning in app.warning)
-    app.run()
-    assert len(calls) == 2
-
-
-def test_token_usage_separates_generation_evaluation_and_cache(demo, monkeypatch):
-    answer = service.load_answer(demo[0], demo[2]["answer_id"])
-    answer["usage"] = dict(
-        input_tokens=100, output_tokens=20, backend_calls=1, cache_hits=0, unknown_usage_attempts=0
-    )
-    calls = []
-
-    def evaluate(config, answer, *, claim_id, allow_api):
-        calls.append(claim_id)
-        assert allow_api is True
-        cached = claim_id == answer["claims"][1]["claim_id"]
-        return dict(
-            status="evaluated",
-            scores=dict(faithfulness=1.0, response_relevancy=0.8),
-            usage=dict(
-                input_tokens=0 if cached else 10,
-                output_tokens=0 if cached else 2,
-                backend_calls=0 if cached else 1,
-                cache_hits=1 if cached else 0,
-                unknown_usage_attempts=0,
-            ),
-        )
-
-    monkeypatch.setattr("rag.ui.app.run_question", lambda *args, **kwargs: answer)
-    monkeypatch.setattr("rag.ui.app.evaluate_answer_quality", evaluate)
-    app = app_test(demo, monkeypatch)
-    app.radio[0].set_value("Tanya korpus").run()
-    app.text_area[0].set_value("Compare evidence")
-    app.button[0].click().run()
-    assert not app.exception
-    assert app.table[0].value.to_dict("records") == [
-        dict(Tahap="Generator", Input="100", Output="20"),
-        dict(Tahap="Evaluasi RAGAS", Input="10", Output="2"),
-        dict(Tahap="Total tercatat", Input="110", Output="22"),
-    ]
-    assert any("Request API: 2 · Cache hit: 1" in c.value for c in app.caption)
-    app.run()
-    assert len(calls) == 2
-    assert app.table[0].value.iloc[2]["Input"] == "110"
-
-
-def test_saved_demo_does_not_count_historical_generation_as_new_tokens(demo, monkeypatch):
-    app = app_test(demo, monkeypatch)
-    app.selectbox[0].select(0).run()
-    assert not app.exception
-    assert app.table[0].value.iloc[0]["Input"] == "Belum tersedia"
-    assert app.table[0].value.iloc[2]["Input"] == "400"
-    assert any("Sebagian pemakaian belum diketahui" in c.value for c in app.caption)
-
-
 def test_optional_minicheck_does_not_write_source(corpus, monkeypatch):
     config, rows = corpus
     generation = service.generate_answer(
@@ -432,73 +272,6 @@ def test_optional_minicheck_does_not_write_source(corpus, monkeypatch):
     records = service.run_diagnostics(config, answer)
     assert records[0]["label"] == "supported"
     assert Path(config.paths.db_path).read_bytes() == before
-
-
-def app_test(demo: tuple, monkeypatch: pytest.MonkeyPatch) -> AppTest:
-    config, directory, _ = demo
-    monkeypatch.setattr("rag.ui.app.load_config", lambda _: config)
-    return AppTest.from_function(launch_app, kwargs=dict(demo_dir=str(directory))).run()
-
-
-def test_app_demo_empty_answer_quotes_and_no_evidence(
-    demo: tuple, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    app = app_test(demo, monkeypatch)
-    assert not app.exception
-    assert "Pilih contoh" in app.info[0].value
-    app.selectbox[0].select(0).run()
-    assert not app.exception
-    assert any("Tidak ada bukti" in text.value for text in app.markdown)
-    assert any("Alpha evidence" in text.value for text in app.text)
-    assert any("<script>" in text.value for text in app.text)
-    app.selectbox[0].select(1).run()
-    assert "Tidak ada bukti" in app.info[0].value
-
-
-def test_app_query_validation_submit_and_rerun(
-    demo: tuple, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    answer = service.load_answer(demo[0], demo[2]["answer_id"])
-    calls = []
-
-    def query(question: str, config: object, mode: str, *, allow_api: bool = False) -> dict:
-        calls.append((question, mode, allow_api))
-        return answer
-
-    monkeypatch.setattr("rag.ui.app.run_question", query)
-    app = app_test(demo, monkeypatch)
-    app.radio[0].set_value("Tanya korpus").run()
-    assert not app.checkbox
-    app.button[0].click().run()
-    assert "Tulis pertanyaan" in app.error[0].value
-    app.text_area[0].set_value("  Compare the evidence.  ")
-    app.button[0].click().run()
-    assert not app.exception
-    assert calls == [("Compare the evidence.", "hybrid+rerank", True)]
-    app.run()
-    assert len(calls) == 1
-    assert any("Alpha evidence" in text.value for text in app.text)
-    app.button[0].click().run()
-    assert calls[-1] == ("Compare the evidence.", "hybrid+rerank", True)
-    app.run()
-    assert len(calls) == 2
-
-
-def test_app_reports_missing_demo_and_config(demo: tuple, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        "rag.ui.app.load_config",
-        lambda _: replace(demo[0], paths=replace(demo[0].paths, db_path="missing.db")),
-    )
-    app = AppTest.from_function(launch_app, kwargs=dict(demo_dir=str(demo[1]))).run()
-    assert not app.exception
-    assert "Korpus belum tersedia" in app.error[0].value
-
-    def invalid(_: str) -> None:
-        raise ValueError("invalid config")
-
-    monkeypatch.setattr("rag.ui.app.load_config", invalid)
-    app.run()
-    assert "Config tidak dapat dibaca" in app.error[0].value
 
 
 def test_api_opt_in_generates_caches_and_reports_usage_without_network(
@@ -605,30 +378,6 @@ def test_api_transport_error_is_not_retried(corpus: tuple, monkeypatch: pytest.M
     assert len(calls) == 1
 
 
-def test_app_api_error_shows_setup_and_usage_not_cache_message(
-    demo: tuple, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    answer = service.load_answer(demo[0], demo[2]["answer_id"])
-    answer.update(
-        status="failed",
-        api_allowed=True,
-        report_path="local-report.json",
-        usage=dict(
-            backend_calls=1, cache_hits=0, input_tokens=0, output_tokens=0, unknown_usage_attempts=1
-        ),
-    )
-    monkeypatch.setattr("rag.ui.app.run_question", lambda *args, **kwargs: answer)
-    app = app_test(demo, monkeypatch)
-    app.radio[0].set_value("Tanya korpus").run()
-    app.text_area[0].set_value("A new question")
-    app.button[0].click().run()
-    assert not app.exception
-    assert "API key provider" in app.error[0].value
-    assert any("Request API: 1" in caption.value for caption in app.caption)
-    assert any("belum diketahui" in caption.value for caption in app.caption)
-    assert any("local-report.json" in text.value for text in app.text)
-
-
 @pytest.fixture
 def bibliography(demo: tuple, tmp_path: Path) -> Path:
     config, _, _ = demo
@@ -720,45 +469,6 @@ def test_corpus_rejects_modified_provenance(demo: tuple, bibliography: Path, fil
     path.write_bytes(path.read_bytes() + b" ")
     with pytest.raises(ValueError, match="berbeda"):
         service.load_corpus(demo[0], bibliography)
-
-
-def launch_bibliography_app(report: str) -> None:
-    from rag.ui.app import main
-
-    main(bibliography_report=report)
-
-
-def test_bibliography_app_query_first_and_citation_keys(
-    demo: tuple, bibliography: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    config, _, generation = demo
-    monkeypatch.setattr("rag.ui.app.load_config", lambda _: config)
-    monkeypatch.setattr(
-        "rag.ui.app.run_question",
-        lambda *args, **kwargs: service.load_answer(config, generation["answer_id"]),
-    )
-    app = AppTest.from_function(
-        launch_bibliography_app, kwargs=dict(report=str(bibliography))
-    ).run()
-    assert not app.exception
-    assert not app.radio
-    assert any("2 referensi terdaftar · 1 paper terindeks" in c.value for c in app.caption)
-    assert not app.checkbox
-    app.text_area[0].set_value("Apa buktinya?")
-    app.button[0].click().run()
-    assert not app.exception
-    assert any("Fixture2024" in exp.label and "hal. PDF 1" in exp.label for exp in app.expander)
-    assert not any("Unavailable2025" in exp.label for exp in app.expander)
-    assert any(FIRST in element.value for element in app.text)
-    assert any("perkiraan parser" in c.value for c in app.caption)
-    app.button[0].click().run()
-    assert not any("Izinkan API" in checkbox.label for checkbox in app.checkbox)
-    changed = replace(config, generation=replace(config.generation, model="changed-model"))
-    monkeypatch.setattr("rag.ui.app.load_config", lambda _: changed)
-    app.run()
-    assert not app.exception
-    assert not app.checkbox
-    assert not any("Klaim 1" in m.value for m in app.markdown)
 
 
 def test_local_receipt_binds_ui_aliases_and_explains_unverified_license(tmp_path):

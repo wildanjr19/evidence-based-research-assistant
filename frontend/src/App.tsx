@@ -15,14 +15,12 @@ function Scores({ result, pending }: { result?: Quality; pending: boolean }) {
   const value = (item: number | null | undefined) => item == null ? pending ? 'Menghitung skor…' : 'Belum tersedia' : score.format(item);
   return <div data-ui="scores">
     <dl className="score-grid">
-      <div><dt>Faithfulness</dt><dd>{value(faithfulness)}</dd>
-        <div className="score-track" data-empty={faithfulness == null ? '' : undefined} aria-hidden="true"><span style={{ width: `${Math.max(0, Math.min(1, faithfulness ?? 0)) * 100}%` }} /></div>
-      </div>
-      <div><dt>Response Relevancy</dt><dd>{value(relevancy)}</dd></div>
+      <div><dt>Faithfulness</dt><dd className={faithfulness == null ? 'score-unavailable' : undefined}>{value(faithfulness)}</dd></div>
+      <div><dt>Response Relevancy</dt><dd className={relevancy == null ? 'score-unavailable' : undefined}>{value(relevancy)}</dd></div>
     </dl>
-    <p className="micro score-note">{result && ['partial', 'failed'].includes(result.status)
+    <footer className="micro score-note">{result && ['partial', 'failed'].includes(result.status)
       ? 'Evaluasi belum lengkap. Skor yang gagal tidak dihitung sebagai nol.'
-      : 'Skor AI, bukan penilaian manusia.'}</p>
+      : 'Skor AI, bukan penilaian manusia.'}</footer>
   </div>;
 }
 

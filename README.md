@@ -28,7 +28,7 @@ helping me review the literature while keeping research decisions in my hands.
 | Component | Technology or model | Role |
 |---|---|---|
 | Frontend | React, TypeScript, Vite | Local evidence reader in `frontend/`, claim cards, citations, and PDF inspection |
-| Backend | Python 3.11+, local HTTP adapter | Existing RAG services, bounded API calls, evaluation, and token usage; Streamlit remains available |
+| Backend | Python 3.11+, local HTTP adapter | RAG services, bounded API calls, evaluation, and token usage |
 | Reference import | BibTeX, `bibtexparser` | Import and audit Mendeley reference exports |
 | Document parsing | Docling 2.151.1, Heron, TableFormer accurate | Extract document layout, narrative text, and structured tables |
 | OCR | EasyOCR, Indonesian and English | Extract text from scanned regions |

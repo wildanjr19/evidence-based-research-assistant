@@ -326,12 +326,40 @@ def main() -> None:
             "score notes, run notes and optional MiniCheck work without repeated evaluation."
         )
 
-        for width in (390, 768, 1280):
+        for width in (320, 390, 600, 768, 1024, 1280):
             page.set_viewport_size(dict(width=width, height=1000))
             assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), (
                 f"overflow at {width}"
             )
+            card = page.locator('[data-ui="claim"]').first
+            metrics = card.locator(".score-grid")
+            assert metrics.bounding_box()["width"] > card.bounding_box()["width"] * 0.8, (
+                "Metrics should use the available card width"
+            )
+            boxes = metrics.locator(":scope > div")
+            assert (
+                abs(boxes.nth(0).bounding_box()["width"] - boxes.nth(1).bounding_box()["width"]) < 1
+            )
+            assert (
+                abs(boxes.nth(0).bounding_box()["height"] - boxes.nth(1).bounding_box()["height"])
+                < 1
+            )
+            if width >= 600:
+                assert (
+                    abs(boxes.nth(0).bounding_box()["y"] - boxes.nth(1).bounding_box()["y"]) < 1
+                ), "Desktop metrics should share a row"
+            else:
+                assert boxes.nth(1).bounding_box()["y"] > boxes.nth(0).bounding_box()["y"], (
+                    "Narrow metrics should stack"
+                )
+            footer = card.locator("footer.score-note").bounding_box()
+            card_box = card.bounding_box()
+            assert abs(footer["width"] - (card_box["width"] - 2)) < 1
+            assert (
+                abs(footer["y"] + footer["height"] - (card_box["y"] + card_box["height"] - 1)) < 1
+            )
             page.screenshot(path=str(args.output / f"claims-{width}.png"), full_page=True)
+            card.screenshot(path=str(args.output / f"metric-card-{width}.png"))
         page.set_viewport_size(dict(width=1280, height=1000))
         page.evaluate("document.documentElement.style.zoom = '2'")
         assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")

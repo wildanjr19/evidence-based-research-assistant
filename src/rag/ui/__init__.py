@@ -1,1 +1,1 @@
-"""Local Streamlit interface for inspecting claims and their evidence."""
+"""Local React API and services for inspecting claims and their evidence."""
