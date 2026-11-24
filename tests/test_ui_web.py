@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from http.client import HTTPConnection
 from pathlib import Path
-from threading import Thread
+from threading import Event, Lock, Thread
 from uuid import uuid4
 
 import pytest
@@ -58,7 +58,9 @@ def test_saved_answer_readonly_refresh_and_quality_once(application, monkeypatch
     )
     assert app.action(session, "quality", payload)["scores"]["faithfulness"] == 0
     app.action(session, "quality", payload)
-    assert calls == [dict(allow_api=True, claim_id=payload["claim_id"])]
+    assert calls == [
+        dict(allow_api=True, claim_id=payload["claim_id"], runner=app.quality_pool.score)
+    ]
     assert Path(config.paths.db_path).read_bytes() == before
 
 
@@ -111,6 +113,134 @@ def test_quality_failure_is_retained_and_claim_scope_checked(application, monkey
         app.action(session, "quality", dict(payload, claim_id="foreign-claim"))
     with pytest.raises(ValueError, match="Jawaban berubah"):
         app.action(web.Session(), "quality", payload)
+
+
+def test_http_quality_parallel_and_duplicate_requests_share_one_result(server, monkeypatch):
+    _, headers, content = request(server)
+    metadata = json.loads(content)
+    headers = {
+        "Cookie": headers["Set-Cookie"].split(";", 1)[0],
+        "X-Requested-With": "BuktiRiset",
+        "Content-Type": "application/json",
+    }
+    data = dict(corpus="0", fingerprint=metadata["corpus"]["fingerprint"])
+    status, _, content = request(
+        server,
+        "POST",
+        "/api/demo",
+        json.dumps(
+            dict(data, request_id=str(uuid4()), answer_id=metadata["demos"][0]["answer_id"])
+        ),
+        headers,
+    )
+    assert status == 200
+    reading = json.loads(content)
+    entered, release, guard = Event(), Event(), Lock()
+    calls = []
+
+    def evaluate(config, answer, *, claim_id, **kwargs):
+        with guard:
+            calls.append(claim_id)
+            if len(calls) == 2:
+                entered.set()
+        assert release.wait(timeout=5)
+        return dict(status="evaluated", scores=dict(faithfulness=1, response_relevancy=0.5))
+
+    monkeypatch.setattr(web, "evaluate_answer_quality", evaluate)
+    claims = reading["answer"]["claims"]
+
+    def score(claim):
+        return request(
+            server,
+            "POST",
+            "/api/quality",
+            json.dumps(dict(data, handle=reading["handle"], claim_id=claim["claim_id"])),
+            headers,
+        )
+
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        futures = [executor.submit(score, claim) for claim in (claims[0], claims[0], claims[1])]
+        try:
+            assert entered.wait(timeout=4), "Two different cards must evaluate concurrently"
+            assert request(server, headers=headers)[0] == 200
+        finally:
+            release.set()
+        results = [future.result(timeout=5) for future in futures]
+    assert all(result[0] == 200 for result in results)
+    assert len(calls) == 2 and len(set(calls)) == 2
+    assert json.loads(results[0][2]) == json.loads(results[1][2])
+
+
+def test_quality_slots_limit_all_browser_sessions_to_two(application, monkeypatch):
+    app, config, generation = application
+    answer = service.load_answer(config, generation["answer_id"])
+    release, entered, guard = Event(), Event(), Lock()
+    active = maximum = 0
+
+    def evaluate(*args, **kwargs):
+        nonlocal active, maximum
+        with guard:
+            active += 1
+            maximum = max(maximum, active)
+            if active == 2:
+                entered.set()
+        assert release.wait(timeout=5)
+        with guard:
+            active -= 1
+        return web.FAILURE.copy()
+
+    monkeypatch.setattr(web, "evaluate_answer_quality", evaluate)
+    jobs = []
+    for _ in range(3):
+        session = web.Session()
+        metadata = app.corpus(session, "0")
+        reading = app.store(session, answer)
+        jobs.append(
+            (
+                session,
+                dict(
+                    corpus="0",
+                    fingerprint=metadata["corpus"]["fingerprint"],
+                    handle=reading["handle"],
+                    claim_id=answer["claims"][0]["claim_id"],
+                ),
+            )
+        )
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        futures = [executor.submit(app.action, session, "quality", data) for session, data in jobs]
+        try:
+            assert entered.wait(timeout=4)
+        finally:
+            release.set()
+        for future in futures:
+            future.result(timeout=5)
+    assert maximum == 2
+
+
+def test_switching_answer_during_quality_does_not_attach_old_score(application, monkeypatch):
+    app, config, generation, session, data = context(application)
+    answer = service.load_answer(config, generation["answer_id"])
+    reading = app.store(session, answer)
+    entered, release = Event(), Event()
+
+    def evaluate(*args, **kwargs):
+        entered.set()
+        assert release.wait(timeout=5)
+        return web.FAILURE.copy()
+
+    monkeypatch.setattr(web, "evaluate_answer_quality", evaluate)
+    payload = dict(data, handle=reading["handle"], claim_id=answer["claims"][0]["claim_id"])
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(app.action, session, "quality", payload)
+        try:
+            assert entered.wait(timeout=4)
+            with session.lock:
+                replacement = app.store(session, answer)
+        finally:
+            release.set()
+        with pytest.raises(ValueError, match="Jawaban berubah"):
+            future.result(timeout=5)
+    assert replacement["quality"] == {} and session.quality_pending == {}
 
 
 def test_config_change_invalidates_current_and_rejects_stale_request(application, monkeypatch):

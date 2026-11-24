@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { api } from './api.ts';
 import { licenseLabel, number, safeSource, score, supportLabel, tokenSummary } from './model.ts';
+import { evaluateClaims } from './quality.ts';
 import type { Bootstrap, Claim, Corpus, Diagnostics, Quality, Reading, Reference } from './types.ts';
 
 function errorText(error: unknown): string {
@@ -240,14 +241,14 @@ export function App() {
       requestAnimationFrame(() => document.getElementById('answer-heading')?.focus());
       if (result.answer.status === 'ok') {
         setPhase('evaluation');
-        for (const claim of result.answer.claims) {
+        await evaluateClaims(result.answer.claims, async (claim) => {
           let evaluation: Quality;
           try { evaluation = await api<Quality>('quality', { ...context, handle: result.handle, claim_id: claim.claim_id }); }
           catch { evaluation = { status: 'failed', scores: { faithfulness: null, response_relevancy: null } }; }
           if (attempt !== active.current) return;
           setReading((current) => current?.handle === result.handle
             ? { ...current, quality: { ...current.quality, [claim.claim_id]: evaluation } } : current);
-        }
+        }, () => attempt === active.current);
       }
     } catch (err) { if (attempt === active.current) setError(errorText(err)); }
     finally { if (attempt === active.current) { setPhase(null); busy.current = false; } }

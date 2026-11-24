@@ -34,7 +34,7 @@ retrieval:
   rrf_k: 60
   rerank_candidates: 50
   final_top_k: 8
-  use_reranker: false
+  use_reranker: true
   reranker_model: BAAI/bge-reranker-base
   query_prefix: 'Represent this sentence for searching relevant passages: '
   reranker_revision: 2cfc18c9415c912f9d8155881c133215df768a70

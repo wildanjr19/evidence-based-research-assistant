@@ -218,3 +218,154 @@ def test_evaluation_timeout_does_not_modify_answer(sample, tmp_path, monkeypatch
     with pytest.raises(RuntimeError, match="timeout"):
         quality.evaluate_answer_quality(config, answer)
     assert json.dumps(answer, sort_keys=True) == before
+
+
+@pytest.fixture
+def cached_evaluator(sample, tmp_path, monkeypatch):
+    config, generation, answer = sample
+    monkeypatch.setattr(quality, "ROOT", tmp_path)
+    python = quality._python(tmp_path / "data/skripsi/s5-ragas/.venv")
+    python.parent.mkdir(parents=True)
+    python.write_bytes(b"fixture")
+    calls = []
+
+    def runner(directory, allow_api):
+        item, _ = quality._inputs(directory)
+        calls.append((directory, allow_api))
+        quality._write(
+            directory / "result.json",
+            dict(
+                answer_id=item["answer_id"],
+                claim_id=item.get("claim_id"),
+                input_sha256=quality._file_hash(directory / "input.json"),
+                context_sha256=item["context_sha256"],
+                status="evaluated",
+                errors={},
+                scores=dict(faithfulness=1.0, response_relevancy=-0.1),
+                usage=dict(
+                    backend_calls=3,
+                    input_tokens=200,
+                    output_tokens=30,
+                    cache_hits=2,
+                    unknown_usage_attempts=0,
+                ),
+                attempts=[dict(cache_hit=False)],
+            ),
+        )
+
+    return config, generation, answer, runner, calls
+
+
+def test_full_score_cache_skips_worker_and_does_not_rebill_historical_usage(cached_evaluator):
+    config, _, answer, runner, calls = cached_evaluator
+    claim_id = answer["claims"][0]["claim_id"]
+    first = quality.evaluate_answer_quality(config, answer, claim_id=claim_id, runner=runner)
+    repeated = quality.evaluate_answer_quality(config, answer, claim_id=claim_id, runner=runner)
+    assert len(calls) == 1 and calls[0][1] is False
+    assert repeated["score_cache_hit"] and repeated["scores"] == first["scores"]
+    assert repeated["cached_result"] == str((Path(first["directory"]) / "result.json").resolve())
+    assert repeated["directory"] != first["directory"]
+    assert repeated["attempts"] == []
+    assert all(value == 0 for value in repeated["usage"].values())
+
+
+def test_score_cache_can_rebind_identical_content_to_new_claim_ids(cached_evaluator):
+    config, generation, answer, runner, calls = cached_evaluator
+    first = quality.evaluate_answer_quality(
+        config,
+        answer,
+        claim_id=answer["claims"][0]["claim_id"],
+        runner=runner,
+    )
+    chunks, _ = quality._corpus(config)
+    regenerated = generate_answer(
+        answer["question"],
+        [chunks[FIRST], chunks[SECOND]],
+        config,
+        FakeLLM([completion([dict(text=answer["claims"][0]["text"], citations=[FIRST])])]),
+    )
+    assert regenerated["answer_id"] != generation["answer_id"]
+    other = load_answer(config, regenerated["answer_id"])
+    repeated = quality.evaluate_answer_quality(
+        config,
+        other,
+        claim_id=other["claims"][0]["claim_id"],
+        runner=runner,
+    )
+    assert len(calls) == 1
+    assert repeated["answer_id"] == other["answer_id"]
+    assert repeated["claim_id"] == other["claims"][0]["claim_id"]
+    assert repeated["scores"] == first["scores"]
+
+
+@pytest.mark.parametrize("field", ["question", "response", "context_sha256", "claim_id"])
+def test_score_cache_key_binds_evaluation_scope(sample, field):
+    config, generation, _ = sample
+    directory = quality.prepare_quality(config, generation["answer_id"])
+    item, selected = quality._inputs(directory)
+    original = quality._quality_key(item, selected)
+    changed = dict(item, **{field: "different"})
+    assert quality._quality_key(changed, selected) != original
+
+
+@pytest.mark.parametrize(
+    "section,field,value",
+    [
+        ("verification", "judge_model", "gpt-4o"),
+        ("verification", "seed", 12),
+        ("embedding", "revision", "different-revision"),
+    ],
+)
+def test_score_cache_key_binds_model_and_protocol_config(sample, section, field, value):
+    config, generation, _ = sample
+    directory = quality.prepare_quality(config, generation["answer_id"])
+    item, selected = quality._inputs(directory)
+    changed = replace(selected, **{section: replace(getattr(selected, section), **{field: value})})
+    assert quality._quality_key(item, changed) != quality._quality_key(item, selected)
+
+
+def test_corrupt_score_cache_does_not_start_new_api_work(cached_evaluator):
+    config, _, answer, runner, calls = cached_evaluator
+    first = quality.evaluate_answer_quality(config, answer, runner=runner)
+    result = Path(first["directory"]) / "result.json"
+    result.write_bytes(result.read_bytes() + b" ")
+    with pytest.raises(ValueError, match="Cache skor tidak valid"):
+        quality.evaluate_answer_quality(config, answer, runner=runner, allow_api=True)
+    assert len(calls) == 1
+
+
+def test_partial_score_is_not_promoted_to_complete_cache(cached_evaluator):
+    config, _, answer, _, calls = cached_evaluator
+
+    def runner(directory, allow_api):
+        item, _ = quality._inputs(directory)
+        calls.append(directory)
+        quality._write(
+            directory / "result.json",
+            dict(
+                answer_id=item["answer_id"],
+                claim_id=None,
+                input_sha256=quality._file_hash(directory / "input.json"),
+                status="partial",
+                errors=dict(response_relevancy="RuntimeError"),
+                scores=dict(faithfulness=1, response_relevancy=None),
+            ),
+        )
+
+    quality.evaluate_answer_quality(config, answer, runner=runner)
+    assert not list((Path(config.paths.cache_dir) / "answer-quality-cache").glob("*.json"))
+
+
+def test_duplicate_score_requests_across_sessions_only_start_one_worker(cached_evaluator):
+    from concurrent.futures import ThreadPoolExecutor
+
+    config, _, answer, runner, calls = cached_evaluator
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        reports = list(
+            executor.map(
+                lambda _: quality.evaluate_answer_quality(config, answer, runner=runner),
+                range(2),
+            )
+        )
+    assert len(calls) == 1
+    assert sum(report.get("score_cache_hit", False) for report in reports) == 1

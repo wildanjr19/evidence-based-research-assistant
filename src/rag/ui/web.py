@@ -6,17 +6,19 @@ import logging
 import mimetypes
 import secrets
 import sqlite3
+from concurrent.futures import Future
 from contextlib import suppress
 from dataclasses import dataclass, field
 from http.cookies import CookieError, SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from threading import Lock, RLock
+from threading import BoundedSemaphore, Lock, RLock
 from urllib.parse import parse_qs, urlsplit
 from uuid import UUID
 
 from rag.config import Config, load_config
 from rag.evaluation.answer_quality import MAX_CALLS, MAX_OUTPUT_TOKENS, evaluate_answer_quality
+from rag.evaluation.quality_worker import QUALITY_WORKERS, QualityPool
 from rag.retrieval.pipeline import MODES
 from rag.ui.catalog import CORPORA
 from rag.ui.service import (
@@ -43,6 +45,7 @@ class Session:
     identity: tuple[str, str] | None = None
     current: dict | None = None
     requests: dict = field(default_factory=dict)
+    quality_pending: dict[tuple[str, str], Future] = field(default_factory=dict)
 
 
 def string_field(data: dict, name: str, limit: int = 8000) -> str:
@@ -57,6 +60,8 @@ class Application:
         self.sessions: dict[str, Session] = {}
         self.sessions_lock = Lock()
         self.work_lock = Lock()
+        self.quality_slots = BoundedSemaphore(QUALITY_WORKERS)
+        self.quality_pool = QualityPool()
 
     def session(self, cookie: str) -> tuple[str, Session]:
         parsed = SimpleCookie()
@@ -132,6 +137,8 @@ class Application:
         return session.current
 
     def action(self, session: Session, route: str, data: dict) -> dict:
+        if route == "quality":
+            return self.quality(session, data)
         corpus_id = string_field(data, "corpus", 8)
         fingerprint = string_field(data, "fingerprint", 128)
         config, _, demo_dir = self.select(session, corpus_id, fingerprint)
@@ -169,21 +176,6 @@ class Application:
         if current is None or string_field(data, "handle", 64) != current["handle"]:
             raise ValueError("Jawaban berubah. Muat ulang halaman untuk membaca jawaban aktif.")
         answer = current["answer"]
-        if route == "quality":
-            claim_id = string_field(data, "claim_id", 256)
-            if answer["status"] != "ok" or claim_id not in {
-                claim["claim_id"] for claim in answer["claims"]
-            }:
-                raise ValueError("Evaluasi memerlukan klaim dari jawaban yang selesai.")
-            if claim_id not in current["quality"]:
-                current["quality"][claim_id] = FAILURE.copy()
-                try:
-                    current["quality"][claim_id] = evaluate_answer_quality(
-                        config, answer, allow_api=True, claim_id=claim_id
-                    )
-                except (ValueError, RuntimeError, OSError, KeyError):
-                    logger.exception("Claim quality evaluation failed")
-            return current["quality"][claim_id]
         if route == "diagnostics":
             if current["diagnostics"] is None:
                 records = answer["verification"] or run_diagnostics(config, answer)
@@ -196,6 +188,59 @@ class Application:
                 )
             return current["diagnostics"]
         raise ValueError("Tindakan tidak tersedia.")
+
+    def quality(self, session: Session, data: dict) -> dict:
+        corpus_id = string_field(data, "corpus", 8)
+        fingerprint = string_field(data, "fingerprint", 128)
+        handle = string_field(data, "handle", 64)
+        claim_id = string_field(data, "claim_id", 256)
+        with session.lock:
+            config, _, _ = self.select(session, corpus_id, fingerprint)
+            current = session.current
+            if current is None or handle != current["handle"]:
+                raise ValueError("Jawaban berubah. Muat ulang halaman untuk membaca jawaban aktif.")
+            answer = current["answer"]
+            if answer["status"] != "ok" or claim_id not in {
+                claim["claim_id"] for claim in answer["claims"]
+            }:
+                raise ValueError("Evaluasi memerlukan klaim dari jawaban yang selesai.")
+            key = (handle, claim_id)
+            pending = session.quality_pending.get(key)
+            owner = pending is None
+            if owner:
+                if claim_id in current["quality"]:
+                    return current["quality"][claim_id]
+                pending = Future()
+                session.quality_pending[key] = pending
+                # Persist the session marker before releasing the lock for slow work.
+                current["quality"][claim_id] = FAILURE.copy()
+        if owner:
+            result = FAILURE.copy()
+            try:
+                with self.quality_slots:
+                    with session.lock:
+                        self.select(session, corpus_id, fingerprint)
+                        if session.current is not current:
+                            raise ValueError("Jawaban berubah sebelum evaluasi dimulai.")
+                    result = evaluate_answer_quality(
+                        config,
+                        answer,
+                        allow_api=True,
+                        claim_id=claim_id,
+                        runner=self.quality_pool.score,
+                    )
+            except Exception:
+                logger.exception("Claim quality evaluation failed")
+            with session.lock:
+                current["quality"][claim_id] = result
+                pending.set_result(result)
+                del session.quality_pending[key]
+        result = pending.result()
+        with session.lock:
+            self.select(session, corpus_id, fingerprint)
+            if session.current is not current:
+                raise ValueError("Jawaban berubah. Hasil evaluasi bukan untuk jawaban aktif.")
+            return result
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -241,20 +286,24 @@ class Handler(BaseHTTPRequestHandler):
         try:
             parsed = urlsplit(self.path)
             params = parse_qs(parsed.query)
+            if post:
+                if self.headers.get("Content-Type") != "application/json":
+                    raise ValueError("Request harus berupa JSON.")
+                size = int(self.headers.get("Content-Length", "0"))
+                if not 0 < size <= 16384:
+                    raise ValueError("Ukuran request tidak valid.")
+                data = json.loads(self.rfile.read(size))
+                if not isinstance(data, dict):
+                    raise ValueError("Request harus berupa objek JSON.")
+                route = parsed.path.removeprefix("/api/")
+                if route not in {"question", "demo", "quality", "diagnostics"}:
+                    self.json(dict(error="Tindakan tidak tersedia."), 404)
+                    return
+                if route == "quality":
+                    self.json(self.server.application.action(session, route, data))
+                    return
             with session.lock:
                 if post:
-                    if self.headers.get("Content-Type") != "application/json":
-                        raise ValueError("Request harus berupa JSON.")
-                    size = int(self.headers.get("Content-Length", "0"))
-                    if not 0 < size <= 16384:
-                        raise ValueError("Ukuran request tidak valid.")
-                    data = json.loads(self.rfile.read(size))
-                    if not isinstance(data, dict):
-                        raise ValueError("Request harus berupa objek JSON.")
-                    route = parsed.path.removeprefix("/api/")
-                    if route not in {"question", "demo", "quality", "diagnostics"}:
-                        self.json(dict(error="Tindakan tidak tersedia."), 404)
-                        return
                     with self.server.application.work_lock:
                         self.json(self.server.application.action(session, route, data))
                 elif parsed.path == "/api/corpus":
@@ -312,6 +361,10 @@ class LocalServer(ThreadingHTTPServer):
     def __init__(self, port: int, application: Application | None = None) -> None:
         super().__init__(("127.0.0.1", port), Handler)
         self.application = application or Application()
+
+    def server_close(self) -> None:
+        super().server_close()
+        self.application.quality_pool.close()
 
 
 def main() -> None:

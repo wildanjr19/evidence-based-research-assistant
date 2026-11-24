@@ -5,17 +5,20 @@ import json
 import os
 import subprocess
 import sys
+import time
 from collections.abc import Callable
-from contextlib import closing
+from contextlib import closing, redirect_stdout
 from dataclasses import asdict, replace
 from importlib.metadata import version
 from pathlib import Path
+from threading import Lock
 
 import yaml
 
 from rag.config import Config, load_config
 from rag.evaluation.ragas import _corpus, _file_hash, _validate_answer, _write
 from rag.evaluation.retrieval import _code_version
+from rag.files import atomic_write
 from rag.generation.client import LLMBackend
 from rag.generation.store import connect_corpus, load_context
 from rag.ids import make_run_id
@@ -25,6 +28,7 @@ ROOT = Path(__file__).resolve().parents[3]
 MAX_CALLS = 5
 MAX_OUTPUT_TOKENS = 1024
 MAX_PROMPT_BYTES = 65536
+CACHE_LOCKS = [Lock() for _ in range(32)]
 
 
 def _python(environment: Path) -> Path:
@@ -180,6 +184,7 @@ def score_quality(
     backend: LLMBackend | None = None,
     embed_texts: Callable[[list[str]], list[list[float]]] | None = None,
 ) -> dict:
+    started = time.perf_counter()
     item, config = _inputs(directory)
     report = dict(
         answer_id=item["answer_id"],
@@ -198,6 +203,7 @@ def score_quality(
         embedding=asdict(config.embedding),
         response_relevancy_strictness=3,
         interpretation="AI estimates; all retrieved context; not citation accuracy or human truth",
+        timings=dict(validation_seconds=time.perf_counter() - started),
     )
     judge = None
     try:
@@ -223,6 +229,7 @@ def score_quality(
             response_relevancy=dict(user_input=item["question"], response=item["response"]),
         )
         for name, arguments in requests.items():
+            metric_started = time.perf_counter()
             start = len(traces)
             try:
                 report["scores"][name] = metric_value(
@@ -232,6 +239,7 @@ def score_quality(
             except (ValueError, RuntimeError, OSError) as exc:
                 report["errors"][name] = type(exc).__name__
             report["traces"][name] = traces[start:]
+            report["timings"][name + "_seconds"] = time.perf_counter() - metric_started
         known = sum(value is not None for value in report["scores"].values())
         report["status"] = "evaluated" if known == 2 else "partial" if known else "failed"
     except (ValueError, RuntimeError, OSError, ImportError) as exc:
@@ -249,8 +257,107 @@ def score_quality(
             for a in attempts
         ),
     )
+    report["timings"]["total_seconds"] = time.perf_counter() - started
     _write(directory / "result.json", report)
     return report
+
+
+def _quality_key(item: dict, config: Config) -> str:
+    from rag.verification.judge import Judge
+
+    judge = Judge(config, allow_api=False)
+    code = Path(__file__).resolve().parent
+    identity = dict(
+        question=item["question"],
+        response=item["response"],
+        context_sha256=item["context_sha256"],
+        protocol="claim-quality-v1" if item.get("claim_id") else "answer-quality-v1",
+        generation=asdict(judge.client.config.generation),
+        verification=asdict(judge.config.verification),
+        embedding=asdict(config.embedding),
+        limits=[MAX_CALLS, MAX_OUTPUT_TOKENS, MAX_PROMPT_BYTES, 3],
+        implementation={
+            name: _file_hash(code / name)
+            for name in (
+                "answer_quality.py",
+                "quality_worker.py",
+                "ragas_adapter.py",
+                "../verification/judge.py",
+                "../generation/client.py",
+                "../indexing/embedding.py",
+            )
+        },
+        ragas_lock=_file_hash(code.parents[2] / "eval/ragas-requirements.lock"),
+    )
+    return text_hash(json.dumps(identity, sort_keys=True, ensure_ascii=False))
+
+
+def _cached_score(
+    directory: Path,
+    config: Config,
+    item: dict,
+    runner: Callable[[Path, bool], None],
+    allow_api: bool,
+) -> None:
+    key = _quality_key(item, config)
+    cache = Path(config.paths.cache_dir) / "answer-quality-cache" / (key + ".json")
+    with CACHE_LOCKS[int(key[:8], 16) % len(CACHE_LOCKS)]:
+        if cache.is_file():
+            try:
+                pointer = json.loads(cache.read_text(encoding="utf-8"))
+                source = Path(pointer["result"])
+                if not source.resolve().is_relative_to(Path(config.paths.cache_dir).resolve()):
+                    raise ValueError("Quality cache path differs")
+                previous = json.loads(source.read_text(encoding="utf-8"))
+                if pointer["key"] != key or _file_hash(source) != pointer["sha256"]:
+                    raise ValueError("Quality cache hash differs")
+                if previous["status"] != "evaluated" or previous.get("errors"):
+                    raise ValueError("Quality cache is incomplete")
+                from types import SimpleNamespace
+
+                from rag.evaluation.ragas_adapter import metric_value
+
+                for name, minimum in (("faithfulness", 0.0), ("response_relevancy", -1.0)):
+                    metric_value(SimpleNamespace(value=previous["scores"][name]), minimum=minimum)
+            except (OSError, ValueError, TypeError, KeyError):
+                raise ValueError(
+                    "Cache skor tidak valid; periksa artefak sebelum evaluasi."
+                ) from None
+            previous.update(
+                answer_id=item["answer_id"],
+                claim_id=item.get("claim_id"),
+                input_sha256=_file_hash(directory / "input.json"),
+                allow_api=allow_api,
+                score_cache_hit=True,
+                cached_result=str(source),
+                attempts=[],
+                usage=dict(
+                    backend_calls=0,
+                    cache_hits=0,
+                    input_tokens=0,
+                    output_tokens=0,
+                    unknown_usage_attempts=0,
+                ),
+                timings={},
+            )
+            _write(directory / "result.json", previous)
+            return
+        runner(directory, allow_api)
+        result = directory / "result.json"
+        report = json.loads(result.read_text(encoding="utf-8"))
+        if (
+            report["answer_id"] != item["answer_id"]
+            or report.get("claim_id") != item.get("claim_id")
+            or report["input_sha256"] != _file_hash(directory / "input.json")
+        ):
+            raise ValueError("Evaluation result does not match the selected answer")
+        if report["status"] == "evaluated" and not report.get("errors"):
+            atomic_write(
+                cache,
+                json.dumps(
+                    dict(key=key, result=str(result.resolve()), sha256=_file_hash(result))
+                ).encode("utf-8"),
+            )
 
 
 def evaluate_answer_quality(
@@ -259,7 +366,9 @@ def evaluate_answer_quality(
     *,
     allow_api: bool = False,
     claim_id: str | None = None,
+    runner: Callable[[Path, bool], None] | None = None,
 ) -> dict:
+    started = time.perf_counter()
     python = _python(ROOT / "data/skripsi/s5-ragas/.venv")
     if not python.is_file():
         raise ValueError("Environment RAGAS terpisah belum tersedia.")
@@ -273,6 +382,16 @@ def evaluate_answer_quality(
         or item["response"] != _response(answer, claim_id)
     ):
         raise ValueError("Displayed answer differs from persisted generation")
+    prepared_seconds = time.perf_counter() - started
+    if runner is not None:
+        _cached_score(directory, load_config(directory / "config.yaml"), item, runner, allow_api)
+        report = json.loads((directory / "result.json").read_text(encoding="utf-8"))
+        report["directory"] = str(directory)
+        report.setdefault("timings", {}).update(
+            preparation_seconds=prepared_seconds,
+            parent_total_seconds=time.perf_counter() - started,
+        )
+        return report
     command = [
         str(python),
         "-m",
@@ -307,7 +426,38 @@ def evaluate_answer_quality(
     ):
         raise ValueError("Evaluation result does not match the selected answer")
     report["directory"] = str(directory)
+    report.setdefault("timings", {}).update(
+        preparation_seconds=prepared_seconds, parent_total_seconds=time.perf_counter() - started
+    )
     return report
+
+
+def _worker() -> None:
+    wire = sys.stdout
+
+    def send(message: dict) -> None:
+        wire.write(json.dumps(message, allow_nan=False) + "\n")
+        wire.flush()
+
+    for line in sys.stdin:
+        try:
+            request = json.loads(line)
+            directory = Path(request["directory"])
+            if type(request["allow_api"]) is not bool:
+                raise ValueError("Invalid API permission")
+
+            def embed(texts: list[str]) -> list[list[float]]:
+                send(dict(type="embed", texts=texts))
+                response = json.loads(sys.stdin.readline())
+                if "error" in response or len(response["vectors"]) != len(texts):
+                    raise ValueError("Local embedding failed")
+                return response["vectors"]
+
+            with redirect_stdout(sys.stderr):
+                score_quality(directory, allow_api=request["allow_api"], embed_texts=embed)
+            send(dict(type="done"))
+        except Exception as exc:
+            send(dict(type="error", error=type(exc).__name__))
 
 
 def _embed(config_path: Path) -> None:
@@ -333,12 +483,14 @@ def _embed(config_path: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["score", "embed"])
+    parser.add_argument("command", choices=["score", "embed", "worker"])
     parser.add_argument("--directory", type=Path)
     parser.add_argument("--config", type=Path)
     parser.add_argument("--allow-api", action="store_true")
     args = parser.parse_args()
-    if args.command == "score" and args.directory:
+    if args.command == "worker":
+        _worker()
+    elif args.command == "score" and args.directory:
         score_quality(args.directory, allow_api=args.allow_api)
     elif args.command == "embed" and args.config:
         _embed(args.config)

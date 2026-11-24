@@ -249,11 +249,22 @@ def main() -> None:
             "document.querySelector('[data-ui=scores] dd')?.textContent === 'Menghitung skor…'"
         )
         before_score = page.locator('[data-ui="claim"]').nth(1).bounding_box()
-        pending_quality[0].fulfill(json=quality_payload("fixture-c1"))
+        page.wait_for_timeout(100)
+        assert len(pending_quality) == 2, "Both cards should start before either finishes"
+        by_claim = {route.request.post_data_json["claim_id"]: route for route in pending_quality}
+        by_claim["fixture-c2"].fulfill(json=quality_payload("fixture-c2"))
+        page.locator('[data-ui="claim"]').nth(1).get_by_text(
+            "Belum tersedia", exact=True
+        ).first.wait_for()
+        assert (
+            page.locator('[data-ui="claim"]')
+            .first.get_by_text("Menghitung skor…", exact=True)
+            .first.is_visible()
+        )
+        assert page.get_by_role("button", name="Cari bukti", exact=True).is_disabled()
+        by_claim["fixture-c1"].fulfill(json=quality_payload("fixture-c1"))
         page.get_by_text("0,830", exact=True).wait_for()
         page.wait_for_function("document.querySelectorAll('[data-ui=claim]').length === 2")
-        page.wait_for_timeout(50)
-        pending_quality[1].fulfill(json=quality_payload("fixture-c2"))
         scenario["defer_quality"] = False
         page.get_by_role("button", name="Cari bukti", exact=True).wait_for(state="visible")
         page.wait_for_function("!document.querySelector('button.primary').disabled")
@@ -268,6 +279,10 @@ def main() -> None:
         evidence.append(
             "Catalog opens/closes, corpus switches, all four retrieval methods select; "
             "empty submit validates, query renders claims and null/negative scores."
+        )
+        evidence.append(
+            "Two card requests start together; the second completes first without changing "
+            "the first card's pending score or re-enabling submit early."
         )
         evidence.append(
             "Loading disables the form; pending-to-completed scores keep card positions "
