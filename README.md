@@ -8,6 +8,16 @@ The application combines local retrieval with API-based generation and evaluatio
 Answers appear as claim cards with supporting evidence and automatic RAGAS scores,
 helping me review the literature while keeping research decisions in my hands.
 
+## UI screenshots
+
+Research question form and retrieval options:
+
+![Research question form and retrieval options](assets/ss1.png)
+
+Answer cards with citations and evaluation scores:
+
+![Answer cards with citations and evaluation scores](assets/ss2.png)
+
 ## Use cases
 
 - Find the methods, datasets, metrics, and results reported in a paper.
